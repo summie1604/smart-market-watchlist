@@ -1,0 +1,23 @@
+# Skills — installed via skills-pack, recorded in skills-pack.lock.json
+.claude/skills/
+.agents/skills/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.ruff_cache/
+dist/
+
+# Node / Astro
+node_modules/
+.astro/
+packages/web/dist/
+
+# Local data
+*.db
+*.db-wal
+*.db-shm
+.env

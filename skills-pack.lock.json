@@ -1,0 +1,13 @@
+{
+  "installs": {
+    "pack:dev-pack:github.com/aganitha/agent-skills": {
+      "args": [],
+      "installed_at": "2026-09-05T03:33:10+0530",
+      "kind": "pack",
+      "name": "dev-pack",
+      "source": "git@github.com:aganitha/agent-skills.git",
+      "updated_at": "2026-09-05T03:33:10+0530"
+    }
+  },
+  "schema_version": 1
+}

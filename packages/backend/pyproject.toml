@@ -1,0 +1,49 @@
+[project]
+name = "smart-market-watchlist"
+version = "0.1.0"
+description = "Attention system for Indian equities: what meaningfully changed since your last review."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+]
+
+[dependency-groups]
+dev = ["ruff", "ty", "pytest", "pytest-cov", "httpx"]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.13"]
+build-backend = "uv_build"
+
+# The distribution is named for the product; the module is named for what you type.
+[tool.uv.build-backend]
+module-name = "smart_watchlist"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes — undefined names, unused imports
+  "I",    # isort
+  "B",    # flake8-bugbear — likely bugs and design issues
+  "C4",   # flake8-comprehensions — simpler comprehensions
+  "UP",   # pyupgrade — modern Python syntax
+  "SIM",  # flake8-simplify
+  "TCH",  # type-checking import organisation
+  "RUF",  # ruff-specific rules
+]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.pytest.ini_options]
+addopts = ["--cov=src"]
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.rules]
+possibly-unresolved-reference = "error"
+unused-ignore-comment = "warn"

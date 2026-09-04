@@ -1,0 +1,6 @@
+{
+  "name": "smart-market-watchlist",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/web"]
+}
