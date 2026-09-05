@@ -23,6 +23,15 @@ WEIGHTS: dict[str, int] = {
     # Event semantics — which disclosures a reasonable follower would want to know about
     "MATERIAL_EVENT_TYPE": 3,
     "ROUTINE_EVENT_TYPE": -3,
+    # Market behaviour — judged against the security's own baseline, never a fixed percent
+    "UNUSUAL_PRICE_MOVE": 3,
+    "ELEVATED_VOLUME": 1,
+    "MOVE_EXPLAINED_BY_SECTOR": -2,
+    "CORPORATE_ACTION_EXPLAINS_MOVE": -4,
+    "NO_COMPANY_EVENT_DETECTED": -2,
+    "NO_DISCLOSURE_CONSULTED": -2,
+    "THIN_BASELINE": -1,
+    "MARKET_CORROBORATES": 1,
     # Coverage — an absent source lowers what may be claimed, it never leaves it unchanged
     "NO_MARKET_OBSERVATION": -1,
     "NO_NEWS_CORROBORATION": -1,

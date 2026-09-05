@@ -1,7 +1,7 @@
 # Status
 
-**Where the build is:** Step 0 complete and reviewed. The spine runs end to end against
-the live exchange feed. No market data, no news, no LLM in the loop, no user state.
+**Where the build is:** Step 1 complete and reviewed. Market data joins exchange
+disclosures. No news, no LLM in the loop, no user state.
 
 ## What Step 0 established
 
@@ -37,6 +37,40 @@ Proven, by running it — not by design intent:
 The Step 0 review gate was completed only after a blocking coverage defect was found
 and corrected — see the CHANGELOG entry.
 
+## What Step 1 established
+
+- **The D14 chain runs in the frozen order**, enforced structurally rather than by
+  comment: adjustment → normalized observation → own-security trailing baseline →
+  sector/index residual → unusualness → reason-code contribution.
+- **Unusualness is measured against each security's own trailing distribution**
+  (126 sessions live), never a fixed percentage.
+- **Scenario G proven**: a two-for-one split reads as `-50%` unadjusted and ~0% adjusted.
+  It produces a corporate-action note at `NO_MEANINGFUL_CHANGE` with HIGH confidence —
+  never an unusual-movement event.
+- **Scenario A proven**: an unusual move with no disclosure behind it is surfaced with a
+  `NO_COMPANY_EVENT_DETECTED` reason code. The system reports the gap rather than
+  manufacturing a cause.
+- **Market context reaches disclosures too** — the disclosure pipeline consults market
+  data, and when it is not consulted it says so rather than omitting it.
+- **A self-explaining finding is exempt from the blind→unable promotion.** A corporate
+  action fully accounts for the move it caused, so reporting it as *unable to evaluate*
+  would misrepresent something understood exactly. The exemption is deliberately narrow.
+- **`TATAMOTORS` was removed from the curated universe** — it demerged into TMPV and TMCV
+  and no longer resolves. Carrying a dead symbol would have produced a permanent,
+  unexplained coverage gap for a company claimed as fully covered.
+
+## What Step 1 did *not* establish
+
+- **Calibration is not validated.** A 12-sigma unexplained move currently lands at LOW,
+  because `NO_COMPANY_EVENT_DETECTED` nearly cancels `UNUSUAL_PRICE_MOVE`. Whether an
+  unexplained move should be *demoted* or *promoted* is an open product question —
+  see the note below.
+- **Intraday behaviour does not exist.** Daily bars only.
+- **Sector mapping is hand-curated** for nine securities. Anything outside it is judged
+  without a sector reference, and says so.
+- **Corporate-action detection depends on the provider** marking the split or dividend
+  on the session. An unmarked action would not be caught.
+
 ## What Step 0 did *not* establish
 
 Stated explicitly, because the list above is easy to over-read:
@@ -54,15 +88,23 @@ Stated explicitly, because the list above is easy to over-read:
 - **There is no user state** — no accounts, watchlists or checkpoints. Everything served
   is shared intelligence, identical for every reader.
 
-## Next — step 1, skeleton and truth
+## Open product question, for a human
 
-Market adapter, deterministic observations, corporate-action adjustment ordered before
-baseline comparison (D14). Demoable: scenarios A and G. This also removes the
-`NO_MARKET_OBSERVATION` coverage gap that currently pushes most verdicts to *unable to
-evaluate*.
+**Should an unexplained move be demoted or promoted?** Today `NO_COMPANY_EVENT_DETECTED`
+scores −2, so a 12-sigma move with three times normal volume lands at LOW. The argument
+for demotion: we cannot corroborate it, and news is not built. The argument for
+promotion: a large move nobody can explain is *more* concerning than an explained one,
+and VISION.md §5 treats it as an honest finding rather than a weak one. This is a
+calibration decision (D4) and belongs to a person with the fixture set, not to a silent
+weight change.
 
-Then: evidence and events (D) → the engine (B, C, H) → user state → lifecycle and
-summaries (E, F) → frontend. Scenario letters refer to the demo matrix in `DESIGN.md`.
+## Next — step 2, evidence and events
+
+News adapter, LLM extraction with schema validation, event identity with `LINK` /
+`CREATE_NEW` / `AMBIGUOUS` (D12). Demoable: scenario D. This also removes the
+`NO_NEWS_CORROBORATION` gap that still caps most verdicts.
+
+Then: the engine (B, C, H) → user state → lifecycle and summaries (E, F) → frontend. Scenario letters refer to the demo matrix in `DESIGN.md`.
 
 ## Known gaps in what exists
 
@@ -78,7 +120,8 @@ summaries (E, F) → frontend. Scenario letters refer to the demo matrix in `DES
 ## Risks, reordered
 
 1. ~~No authoritative disclosure source works.~~ **Closed** by Step 0 — with the caveat
-   above that one session is not a reliability guarantee.
+   that one session is not a reliability guarantee. The same caveat now applies to
+   `yfinance`: it worked across 11 symbols in one session. That is not reliability.
 2. **LLM extraction quality on real news** — the next unproven thing, and it fails
    quietly rather than loudly. Validate on real articles in step 2 before building on it.
 3. **Event linking tuning** — too conservative and scenario D shows duplicates, which is

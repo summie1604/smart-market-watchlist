@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-09-05 — Step 1, market observation
+
+**What:** The deterministic half of the engine. Daily bars from `yfinance` feed a pure
+`market` module that runs the D14 chain in the order the design fixes — corporate-action
+adjustment, then the security's own trailing baseline, then sector residual, then
+unusualness — with each stage taking the previous stage's output so the sequence cannot
+be reordered by accident. Market observations become evidence in their own right (D23),
+so an unexplained move and a corporate action are both assessable through the existing
+event and reason-code path. The disclosure pipeline now consults market data too.
+
+**Why:** Scenarios A and G are the first two the product must get right, and both are
+about *not* over-claiming: A refuses to invent a cause for a move nobody can explain, G
+refuses to mistake a split for deterioration. Both are proven through the pipeline with
+fixtures, not only in the calculation, because the calculation being right does not
+prove the product does the right thing with it.
+
+**Corrections found while building:** `TATAMOTORS` no longer resolves — it demerged into
+TMPV and TMCV — so the curated universe carried a dead symbol that would have produced a
+permanent unexplained coverage gap. The provider's most recent bar carries volume but a
+NaN close while the session settles; computing a return against it silently poisons the
+baseline, so incomplete sessions are dropped at the adapter. And a corporate action was
+initially reported as *unable to evaluate reliably*: the blind→unable promotion fired
+because news is missing, even though a split is a complete account of the move it
+caused. Self-explaining findings are now exempt, narrowly.
+
+**Open, deliberately:** a 12-sigma unexplained move currently lands at LOW because
+`NO_COMPANY_EVENT_DETECTED` nearly cancels `UNUSUAL_PRICE_MOVE`. Whether inexplicability
+should demote or promote is a calibration question for a person, not a silent weight
+change.
+
+**Rejected:**
+
+- *A per-security assessment unit for market movements.* Two units of assessment and two
+  review paths, pre-empting the per-company review page step 4 owes anyway. See D23.
+- *Surfacing unusual moves only where a disclosure exists to attach them to.* That is
+  scenario A discarded — an unexplained move is a finding.
+- *A fixed percentage threshold for unusualness.* Encodes the magnitude-equals-meaning
+  error the product exists to reject; baselines are per security.
+- *Falling back to the broad index where no sector index is curated.* Would imply a
+  comparison we did not make; the residual is `None`, not zero.
+
 ## 2026-09-05 — Step 0, the disclosure spike
 
 **What:** The architectural spine, end to end. An authoritative disclosure source (NSE

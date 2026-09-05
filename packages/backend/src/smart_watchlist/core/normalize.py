@@ -9,21 +9,32 @@ downstream changes, because it consumes candidates either way (DESIGN.md D5).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from .models import EventCandidate
+from .models import EventCandidate, Evidence, SourceTier
 
 if TYPE_CHECKING:
-    from .models import Evidence
+    from datetime import date
+
+    from .market import MarketObservation
 
 __all__ = [
+    "CORPORATE_ACTION",
     "EXTRACTION_DETERMINISTIC",
     "MATERIAL_EVENT_TYPES",
     "ROUTINE_EVENT_TYPES",
+    "UNUSUAL_MOVEMENT",
+    "from_observation",
     "to_candidate",
 ]
 
 EXTRACTION_DETERMINISTIC = "deterministic/disclosure-fields/v1"
+
+UNUSUAL_MOVEMENT = "Unusual price movement"
+"""Category for evidence the system computed itself, rather than read somewhere."""
+
+CORPORATE_ACTION = "Corporate action"
 
 MATERIAL_EVENT_TYPES: frozenset[str] = frozenset(
     {
@@ -74,3 +85,76 @@ def to_candidate(evidence: Evidence, event_type: str) -> EventCandidate:
         evidence_refs=(evidence.source_ref,),
         extraction=EXTRACTION_DETERMINISTIC,
     )
+
+
+def from_observation(observation: MarketObservation, company_name: str) -> list[Evidence]:
+    """Turn a market observation into evidence, where it says something worth saying.
+
+    An observation is evidence in its own right — computed by us from primary data, which
+    is why :attr:`SourceTier.COMPUTED` exists. Two cases produce it, and they are
+    deliberately different:
+
+    *An unusual move* becomes evidence so the system can report that something happened
+    without claiming to know why. That is scenario A: the honest output is the movement
+    and its context, never a manufactured cause.
+
+    *A corporate action* becomes evidence so a mechanical move is reported as mechanical.
+    Adjustment already removed it from the return (D14), so it can no longer masquerade
+    as deterioration — but staying silent would leave the reader wondering why the
+    printed price moved. That is scenario G.
+
+    A calm session produces nothing. Absence of evidence here is not a verdict; the
+    per-company review in step 4 is what will say "nothing meaningful changed".
+    """
+    evidence: list[Evidence] = []
+    if observation.corporate_action is not None:
+        evidence.append(
+            _computed(
+                observation,
+                company_name,
+                category=CORPORATE_ACTION,
+                title=(
+                    f"{observation.symbol}: {observation.corporate_action}. "
+                    f"Printed price moved {observation.raw_return_pct:+.1f}%; "
+                    f"adjusted for the action the move is {observation.return_pct:+.1f}%."
+                ),
+            )
+        )
+    if observation.is_unusual and not observation.is_mechanical:
+        evidence.append(
+            _computed(
+                observation,
+                company_name,
+                category=UNUSUAL_MOVEMENT,
+                title=(
+                    f"{observation.symbol} moved {observation.return_pct:+.1f}% "
+                    f"({observation.sigma_multiple:+.1f} times its own typical session)."
+                ),
+            )
+        )
+    return evidence
+
+
+def _computed(
+    observation: MarketObservation, company_name: str, *, category: str, title: str
+) -> Evidence:
+    stamp = _at_midnight(observation.as_of)
+    return Evidence(
+        source="market",
+        source_ref=f"market:{observation.symbol}:{observation.as_of.isoformat()}:{category}",
+        tier=SourceTier.COMPUTED,
+        publisher="computed",
+        subject_company=company_name,
+        retrieved_at=stamp,
+        published_at=stamp,
+        title=title,
+        body="",
+        url="",
+        security_symbol=observation.symbol,
+        category=category,
+    )
+
+
+def _at_midnight(on: date) -> datetime:
+    """Sessions are dated, not timestamped. Anchor to the session date in UTC."""
+    return datetime(on.year, on.month, on.day, tzinfo=UTC)

@@ -63,8 +63,25 @@ def test_unbuilt_source_families_are_declared_as_missing_coverage(tmp_path) -> N
     _run, assessed = run_disclosure_pipeline(FakeDisclosureSource([make_evidence()]), store)
 
     missing = {r.source for r in assessed[0].coverage.missing}
-    assert {"market", "news"} <= missing
+    assert "news" in missing, "the news adapter does not exist yet"
     assert not assessed[0].coverage.is_complete
+
+
+def test_market_data_not_consulted_is_stated_not_omitted(tmp_path) -> None:
+    """Market data exists now, so silence about it would be a lie of omission.
+
+    A capability existing elsewhere in the system never licenses a claim that this
+    verdict's own evidence and coverage do not support.
+    """
+    store = SqliteAssessmentStore(tmp_path / "t.db")
+
+    _run, assessed = run_disclosure_pipeline(
+        FakeDisclosureSource([make_evidence()]), store, market=None
+    )
+
+    market = next(r for r in assessed[0].coverage.records if r.source == "market")
+    assert market.status is not CoverageStatus.OK
+    assert "not consulted" in market.detail.lower()
 
 
 def test_provenance_survives_the_round_trip(tmp_path) -> None:

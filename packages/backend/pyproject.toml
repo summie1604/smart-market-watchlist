@@ -7,6 +7,7 @@ dependencies = [
     "fastapi>=0.115",
     "httpx>=0.28.1",
     "uvicorn[standard]>=0.32",
+    "yfinance>=1.7.0",
 ]
 
 [dependency-groups]

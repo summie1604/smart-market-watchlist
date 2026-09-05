@@ -17,9 +17,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..adapters.nse_disclosures import SOURCE_NAME, NseDisclosureSource
 from ..adapters.sqlite_store import SqliteAssessmentStore
+from ..adapters.yfinance_market import YFinanceMarketSource
 from ..core.engine import coverage_status_note
 from ..core.models import Attention
-from ..core.pipeline import run_disclosure_pipeline
+from ..core.pipeline import run_disclosure_pipeline, run_market_pipeline
 
 if TYPE_CHECKING:
     from ..core.models import Assessment, IngestRun
@@ -61,8 +62,17 @@ def ingest() -> dict[str, Any]:
     Manual for now. Step 3 puts this on a schedule, because observing only when someone
     asks cannot answer "what changed while I was gone" (DESIGN.md D3).
     """
-    run, assessments = run_disclosure_pipeline(NseDisclosureSource(), _store())
-    return {"assessed": len(assessments), "source_health": _serialise_run(run)}
+    store = _store()
+    market = YFinanceMarketSource()
+    market_run, market_assessed = run_market_pipeline(market, store)
+    disclosure_run, disclosure_assessed = run_disclosure_pipeline(
+        NseDisclosureSource(), store, market=market
+    )
+    return {
+        "assessed": len(market_assessed) + len(disclosure_assessed),
+        "source_health": _serialise_run(disclosure_run),
+        "runs": [_serialise_run(market_run), _serialise_run(disclosure_run)],
+    }
 
 
 @app.get("/assessments")

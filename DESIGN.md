@@ -6,7 +6,7 @@ This document records the architectural decisions behind the Smart Market Watchl
 
 It is not an implementation spec. Nothing here should be recoverable by reading the code; everything here should be hard to recover from the code alone.
 
-**Status: frozen, with D20–D22 appended after Step 0.** The initial design was frozen before implementation. D20–D22 were appended after Step 0 exposed previously unresolved implementation boundaries. These are recorded design decisions resulting from the review process, not silent changes to the frozen architecture.
+**Status: frozen, with D20–D22 appended after Step 0 and D23 after Step 1.** The initial design was frozen before implementation. D20–D22 were appended after Step 0, and D23 after Step 1, each time because implementation exposed a boundary the original design left unresolved. These are recorded design decisions resulting from the review process, not silent changes to the frozen architecture.
 
 The freeze means implementation must not silently redefine architecture. It does not mean implementation can never expose a missing decision. D1–D19 are unchanged and unrenumbered.
 
@@ -464,6 +464,16 @@ design left unresolved rather than a reversal of anything above it.*
   - **B** — move all ranking to the frontend. **Rejected:** ranking belongs with the engine that produced the assessments and the reason codes behind them; a second client would answer the same question differently.
   - **C (chosen)** — canonical ranking in the backend, view sorts in the frontend, with the boundary stated.
 - **Consequences:** sharpens D2's rule that the frontend renders verdicts and never computes one — ordering by verdict is now explicitly part of the verdict. A client that applies no sort must return the received order untouched.
+
+### D23 — A market observation can itself be evidence
+
+- **Decision:** An unusual price move, and a corporate action, each become an `Event` whose evidence is the observation the system computed — `SourceTier.COMPUTED`, the tier the model already declared for "derived by us from primary data". The engine assesses them exactly as it assesses a disclosure.
+- **Why:** The original Shape passed `MarketObservation` into `assess` as context *for an event*, which silently assumed every event originates outside the system. Scenario A has no external event by construction — the price moved and nothing was disclosed — so under the original shape it could not be surfaced at all. Making the observation evidence keeps one assessment path, one reason-code ledger and one persistence model rather than a second parallel one.
+- **Options:**
+  - **A** — a per-security assessment unit alongside the per-event one. **Rejected:** two units of assessment, two review paths, and it pre-empts the per-company review page that step 4 owes the user anyway.
+  - **B** — surface unusual moves only when a disclosure exists to attach them to. **Rejected:** that is precisely scenario A, discarded. An unexplained move is a finding, and refusing to report it is the opposite of the intended behaviour.
+  - **C (chosen)** — computed evidence, existing event and assessment path.
+- **Consequences:** a calm security produces no event at all, which is *not* a verdict of "no meaningful change" — that per-company statement is still owed by the review page in step 4, and the distinction is now written down so it is not mistaken for one. A corporate action produces a note rather than an alarm (scenario G), and an unexplained move produces a `NO_COMPANY_EVENT_DETECTED` reason code rather than a manufactured cause (scenario A).
 
 ---
 

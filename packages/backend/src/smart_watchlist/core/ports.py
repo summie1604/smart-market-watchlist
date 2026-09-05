@@ -11,9 +11,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from .market import Bar
     from .models import Assessment, CoverageRecord, Evidence, IngestRun
 
-__all__ = ["AssessmentStore", "DisclosureSource"]
+__all__ = ["AssessmentStore", "DisclosureSource", "MarketSource"]
 
 
 class DisclosureSource(Protocol):
@@ -27,6 +30,19 @@ class DisclosureSource(Protocol):
     name: str
 
     def fetch(self) -> tuple[list[Evidence], CoverageRecord]: ...
+
+
+class MarketSource(Protocol):
+    """Primary price and volume data.
+
+    Returns bars per symbol plus one coverage record. A symbol absent from the mapping
+    has no data — which the caller must treat as missing coverage, never as a calm
+    session.
+    """
+
+    name: str
+
+    def fetch(self, symbols: Sequence[str]) -> tuple[dict[str, list[Bar]], CoverageRecord]: ...
 
 
 class AssessmentStore(Protocol):

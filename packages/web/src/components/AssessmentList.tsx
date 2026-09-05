@@ -195,9 +195,15 @@ function AssessmentCard({ assessment: a }: { assessment: Assessment }) {
           {a.evidence.map((e) => (
             <li key={e.ref}>
               <code>{e.tier}</code> · {e.publisher} · {e.published_at} ·{" "}
-              <a href={e.url} target="_blank" rel="noreferrer">
-                filing {e.ref}
-              </a>
+              {e.url ? (
+                <a href={e.url} target="_blank" rel="noreferrer">
+                  source document
+                </a>
+              ) : (
+                // Computed evidence has no document to link to. A dead link labelled
+                // "filing" would claim a source that does not exist.
+                <span>derived from primary market data ({e.ref})</span>
+              )}
             </li>
           ))}
         </ul>
