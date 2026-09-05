@@ -27,6 +27,7 @@ from ..core.models import (
     Evidence,
     IngestRun,
     ReasonCode,
+    RunStatus,
     SourceTier,
 )
 
@@ -64,6 +65,12 @@ _MIGRATIONS: tuple[str, ...] = (
         coverage       TEXT NOT NULL
     );
     CREATE INDEX idx_runs_source_started ON ingest_runs (source, started_at DESC);
+    """,
+    """
+    ALTER TABLE ingest_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'COMPLETED';
+    ALTER TABLE ingest_runs ADD COLUMN finished_at TEXT;
+    ALTER TABLE ingest_runs ADD COLUMN detail TEXT NOT NULL DEFAULT '';
+    CREATE INDEX idx_runs_status ON ingest_runs (status);
     """,
     """
     ALTER TABLE assessments ADD COLUMN extraction TEXT;
@@ -151,11 +158,16 @@ class SqliteAssessmentStore:
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO ingest_runs (run_id, source, started_at, assessed_count, coverage)
-                VALUES (?,?,?,?,?)
+                INSERT INTO ingest_runs
+                    (run_id, source, started_at, assessed_count, coverage,
+                     status, finished_at, detail)
+                VALUES (?,?,?,?,?,?,?,?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     assessed_count=excluded.assessed_count,
-                    coverage=excluded.coverage
+                    coverage=excluded.coverage,
+                    status=excluded.status,
+                    finished_at=excluded.finished_at,
+                    detail=excluded.detail
                 """,
                 (
                     run.run_id,
@@ -163,6 +175,9 @@ class SqliteAssessmentStore:
                     run.started_at.isoformat(),
                     run.assessed_count,
                     json.dumps([_coverage_row(c) for c in run.coverage.records]),
+                    run.status.value,
+                    None if run.finished_at is None else run.finished_at.isoformat(),
+                    run.detail,
                 ),
             )
 
@@ -199,6 +214,57 @@ class SqliteAssessmentStore:
             raw = row["extraction"]
             out.append((_to_assessment(row), json.loads(raw) if raw else None))
         return out
+
+    def fail_running_runs(self, source: str, detail: str, finished_at: datetime) -> int:
+        """Mark this source's in-flight runs as failed.
+
+        A pipeline records its run before it fetches, so when it raises there is already a
+        RUNNING row. Writing a second, separate failure row would leave the in-flight one
+        newest and still reading as in-progress — the failure would be recorded and
+        invisible at the same time.
+        """
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE ingest_runs
+                SET status = ?, detail = ?, finished_at = ?
+                WHERE source = ? AND status = ?
+                """,
+                (
+                    RunStatus.FAILED.value,
+                    detail,
+                    finished_at.isoformat(),
+                    source,
+                    RunStatus.RUNNING.value,
+                ),
+            )
+            return cursor.rowcount
+
+    def reap_interrupted_runs(self) -> int:
+        """Mark runs still recorded as RUNNING as interrupted.
+
+        Called at startup. Nothing but a crash, a kill or a hard shutdown can leave a run
+        in RUNNING, so finding one is proof the process died mid-cycle — and until it is
+        reclassified, its incomplete coverage would read as current health.
+        """
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE ingest_runs
+                SET status = ?, detail = 'Process ended before this run reported back.'
+                WHERE status = ?
+                """,
+                (RunStatus.INTERRUPTED.value, RunStatus.RUNNING.value),
+            )
+            return cursor.rowcount
+
+    def recent_runs(self, limit: int = 20) -> list[IngestRun]:
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                "SELECT * FROM ingest_runs ORDER BY started_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [_to_run(row) for row in rows]
 
     def get(self, event_id: str) -> Assessment | None:
         """One event by id, by primary key.
@@ -274,6 +340,11 @@ def _to_run(row: sqlite3.Row) -> IngestRun:
         started_at=datetime.fromisoformat(row["started_at"]),
         coverage=_to_coverage(row["coverage"]),
         assessed_count=row["assessed_count"],
+        status=RunStatus(row["status"]),
+        finished_at=(
+            None if row["finished_at"] is None else datetime.fromisoformat(row["finished_at"])
+        ),
+        detail=row["detail"] or "",
     )
 
 

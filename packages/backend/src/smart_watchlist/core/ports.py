@@ -102,3 +102,11 @@ class AssessmentStore(Protocol):
     def latest_run(self, source: str) -> IngestRun | None: ...
 
     """The most recent run for a source, which is what current source health means."""
+
+    def fail_running_runs(self, source: str, detail: str, finished_at: datetime) -> int: ...
+
+    """Reconcile in-flight runs for a source into a failed state."""
+
+    def reap_interrupted_runs(self) -> int: ...
+
+    """The most recent run for a source, which is what current source health means."""

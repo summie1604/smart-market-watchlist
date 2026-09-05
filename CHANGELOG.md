@@ -1,5 +1,51 @@
 # Changelog
 
+## 2026-09-05 — Scheduled background ingestion
+
+**What:** The system observes on its own. An in-process asyncio scheduler runs one cycle
+at a time inside the application's lifespan, on an explicit interval, with `POST /ingest`
+kept as an operator affordance that calls the *same* `run_cycle` — one ingestion path, so
+a bug cannot hide in the branch nobody exercises. A trigger during an active cycle returns
+409 rather than queueing.
+
+**Why this shape:** a single process needs an in-process flag, not a distributed lock. A
+broker, a worker pool or a job framework here would be machinery guarding a topology this
+deployment does not have — D10's rule applied to scheduling rather than to storage.
+
+**Crash safety, which is the substantive change:** each pipeline now records its run as
+`RUNNING` — with its own source marked unavailable — *before* anything it produces can be
+persisted, then replaces it with the outcome. Assessments can no longer exist without the
+run that explains their coverage. A process killed mid-cycle leaves a record saying so,
+and startup reaps anything still `RUNNING` as `INTERRUPTED`, because nothing but a death
+can leave that state. A run that failed or was interrupted is never healthy, whatever
+partial coverage it happened to record.
+
+**Two defects found by running it, not by reading it:**
+
+- *The review window filtered on publication time.* A scheduled cycle ingested 218
+  assessments while a user was away and their review showed **nothing**, because every
+  article had been published before their checkpoint even though the system only learned
+  of it afterwards. DESIGN.md §20 requires the opposite — late-arriving events stay new to
+  the user. The window now measures when we learned, while publication time is still
+  carried and displayed; the two remain distinct concepts.
+- *A first review called a just-added company "quiet".* With no previous checkpoint the
+  "newly added" state was unreachable, so the system reported "no meaningful change since
+  your last review" when there had been no last review and it had not been watching.
+
+**Also:** shutdown now drains an active cycle instead of cancelling it, which would have
+left the run `RUNNING` and its work half-written.
+
+**Rejected:**
+
+- *Redis, a broker, a distributed lock, a job framework.* Nothing here has a second
+  process to coordinate with.
+- *Retrying a failed family inside the cycle.* The next interval is the retry; a tight
+  loop against a rate-limited provider makes the outage worse.
+- *Queueing a manual trigger behind an active cycle.* Two concurrent cycles duplicate
+  fetches for no benefit, so busy is the honest answer.
+- *Recording failure as a second run row.* It would leave the in-flight row newest, making
+  the failure recorded and invisible at the same time.
+
 ## 2026-09-05 — Step 4, user state and "since you last checked"
 
 **What:** Accounts, sessions, watchlists and review checkpoints. The product now answers

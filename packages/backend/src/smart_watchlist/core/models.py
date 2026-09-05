@@ -34,6 +34,7 @@ __all__ = [
     "Evidence",
     "IngestRun",
     "ReasonCode",
+    "RunStatus",
     "SourceTier",
 ]
 
@@ -72,6 +73,29 @@ class Confidence(Enum):
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
     LOW = "LOW"
+
+
+class RunStatus(Enum):
+    """How an ingestion attempt ended — or that it has not.
+
+    D20 established that a run's coverage is persisted independently of the assessments
+    it produces. It assumed runs finish. A scheduled process can be killed mid-cycle, so
+    the record has to be able to say "started and never reported back" — otherwise an
+    interrupted run is indistinguishable from one that never happened, and the previous
+    run's health stays on screen as current.
+    """
+
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    INTERRUPTED = "INTERRUPTED"
+    """Recorded as RUNNING and found still running by a later process — the tell for a
+    crash or a kill, since nothing else can leave a run in that state."""
+
+    @property
+    def is_current_health(self) -> bool:
+        """Whether this run's coverage may be presented as current source health."""
+        return self is RunStatus.COMPLETED
 
 
 class CoverageStatus(Enum):
@@ -219,15 +243,24 @@ class IngestRun:
     started_at: datetime
     coverage: Coverage
     assessed_count: int
+    status: RunStatus = RunStatus.COMPLETED
+    finished_at: datetime | None = None
+    detail: str = ""
+    """Why a run failed, when it did. Never carries a credential or a provider body."""
 
     @property
     def is_healthy(self) -> bool:
-        """True when the source family this run targeted was consulted successfully.
+        """True when this run finished and its own source family was consulted successfully.
+
+        A run that failed or was interrupted is never healthy, whatever its partial
+        coverage records happen to say.
 
         A run carrying no record for its own source is *not* healthy. Absence of a
         failure record is not evidence of success — the same distinction the product
         makes between "nothing changed" and "we could not look", applied to itself.
         """
+        if not self.status.is_current_health:
+            return False
         own = [r for r in self.coverage.records if r.source == self.source]
         return bool(own) and all(r.status is CoverageStatus.OK for r in own)
 

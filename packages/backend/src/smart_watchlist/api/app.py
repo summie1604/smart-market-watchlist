@@ -10,14 +10,15 @@ yet, so everything served here is shared intelligence — the same for every rea
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 
-from ..adapters.claude_extractor import ClaudeExtractor
+from ..adapters.gemini_extractor import GeminiExtractor
 from ..adapters.google_news import SOURCE_NAME as NEWS_SOURCE
 from ..adapters.google_news import GoogleNewsSource
 from ..adapters.nse_disclosures import SOURCE_NAME as DISCLOSURE_SOURCE
@@ -30,27 +31,68 @@ from ..adapters.yfinance_market import YFinanceMarketSource
 from ..core.context import context_for, curated_symbols
 from ..core.corroboration import assess_corroboration
 from ..core.engine import coverage_status_note
+from ..core.ingestion import IngestionSources
 from ..core.models import Attention, Coverage
-from ..core.pipeline import (
-    run_disclosure_pipeline,
-    run_market_pipeline,
-    run_news_pipeline,
-)
 from ..core.review import CompanyLine, assemble
 
 # Imported at runtime, not under TYPE_CHECKING: FastAPI resolves dependency
 # annotations at import time, and a string-only annotation becomes a query parameter.
 from ..core.userstate import User, advance_checkpoint
 from .auth import COOKIE_NAME, clear_session_cookie, current_user, set_session_cookie
+from .scheduler import IngestionScheduler, SchedulerConfig
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from ..core.models import Assessment, IngestRun
 
 __all__ = ["app"]
 
 DB_PATH = os.environ.get("WATCHLIST_DB", "watchlist.db")
 
-app = FastAPI(title="Smart Market Watchlist", version="0.1.0")
+
+def _scheduler_config() -> SchedulerConfig:
+    """Configuration, deliberately four knobs and all optional.
+
+    Defaults are development-safe: enabled, a quarter-hour interval, and one run shortly
+    after startup so a fresh clone has data without anyone calling an endpoint.
+    """
+    return SchedulerConfig(
+        enabled=os.environ.get("INGEST_SCHEDULER", "on").lower() not in ("off", "0", "false"),
+        interval=timedelta(minutes=float(os.environ.get("INGEST_INTERVAL_MINUTES", "15"))),
+        run_on_startup=os.environ.get("INGEST_ON_STARTUP", "on").lower()
+        not in ("off", "0", "false"),
+    )
+
+
+def _live_sources() -> IngestionSources:
+    """The real providers. Gemini leads; the rule extractor is the separate fallback."""
+    return IngestionSources(
+        market=YFinanceMarketSource(),
+        disclosures=NseDisclosureSource(),
+        news=GoogleNewsSource(),
+        extractor=GeminiExtractor(),
+        fallback=RuleExtractor(),
+    )
+
+
+@asynccontextmanager
+async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
+    """Own the scheduler's life alongside the application's.
+
+    Ingestion belongs to the process, not to a request: nothing here is triggered by a
+    page view, and no external or model call happens while rendering (D3).
+    """
+    scheduler = IngestionScheduler(_live_sources(), _STORE, _scheduler_config())
+    application.state.scheduler = scheduler
+    await scheduler.start()
+    try:
+        yield
+    finally:
+        await scheduler.stop()
+
+
+app = FastAPI(title="Smart Market Watchlist", version="0.1.0", lifespan=_lifespan)
 
 # The web package runs on its own dev-server origin. Narrow deliberately: this is a
 # development convenience, not a public API.
@@ -83,30 +125,31 @@ def health() -> dict[str, str]:
 
 
 @app.post("/ingest")
-def ingest() -> dict[str, Any]:
-    """Run the disclosure pipeline once and persist what it assessed.
+async def ingest(request: Request) -> dict[str, Any]:
+    """Run one cycle now, through the same path the scheduler uses.
 
-    Manual for now. Step 3 puts this on a schedule, because observing only when someone
-    asks cannot answer "what changed while I was gone" (DESIGN.md D3).
+    Kept as an operator and development affordance, not a second implementation: a bug
+    cannot hide in the path nobody exercises. A cycle already in flight returns busy
+    rather than queueing, since two concurrent cycles duplicate fetches for no benefit.
     """
-    store = _store()
-    market = YFinanceMarketSource()
-    market_run, market_assessed = run_market_pipeline(market, store)
-    news_run, news_assessed = run_news_pipeline(
-        GoogleNewsSource(), ClaudeExtractor(), store, market=market, fallback=RuleExtractor()
-    )
-    disclosure_run, disclosure_assessed = run_disclosure_pipeline(
-        NseDisclosureSource(), store, market=market
-    )
+    scheduler: IngestionScheduler = request.app.state.scheduler
+    result = await scheduler.trigger()
+    if result is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "An ingestion cycle is already running.")
     return {
-        "assessed": len(market_assessed) + len(disclosure_assessed) + len(news_assessed),
-        "source_health": _serialise_run(disclosure_run),
-        "runs": [
-            _serialise_run(market_run),
-            _serialise_run(news_run),
-            _serialise_run(disclosure_run),
-        ],
+        "outcome": result.outcome,
+        "assessed": result.assessed,
+        "healthy_families": result.healthy_families,
+        "failed_families": result.failed_families,
+        "runs": [_serialise_run(run) for run in result.runs],
     }
+
+
+@app.get("/scheduler")
+def scheduler_status(request: Request) -> dict[str, Any]:
+    """Operational visibility: is it running, when did the last cycle run, how did it go."""
+    scheduler: IngestionScheduler = request.app.state.scheduler
+    return scheduler.status()
 
 
 @app.get("/assessments")

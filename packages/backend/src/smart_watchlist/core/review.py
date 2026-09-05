@@ -5,9 +5,15 @@ each event asks of a reader and in what order; a review selects the subset insid
 user's window and leaves that order alone. Rescoring here would be a second, divergent
 answer to a product question (D22).
 
-The window is half-open: ``(previous_checkpoint, review_cutoff]``. Events at exactly the
-previous checkpoint were covered by the last review; events at the cutoff are covered by
-this one.
+The window is half-open: ``(previous_checkpoint, review_cutoff]``, and it is measured
+against **when the system learned something, not when it happened**. Those are different
+times and the difference matters: an article published yesterday that we only ingested
+this morning is new to a user who checked in last night. Filtering on publication time
+would make anything predating a checkpoint permanently invisible, which is precisely the
+backfill case DESIGN.md §20 requires to remain visible — *late-arriving events are still
+new to the user, even if old in wall-clock terms*.
+
+Publication time is still carried and displayed; it is simply not what bounds the window.
 
 Two honesty rules carry over from earlier steps and matter more here, because this is the
 surface a person actually reads:
@@ -112,7 +118,7 @@ def assemble(
         in_window = [
             a
             for a in by_symbol.get(membership.symbol, [])
-            if window_start is None or window_start < a.event.occurred_at <= review_cutoff
+            if window_start is None or window_start < a.assessed_at <= review_cutoff
         ]
         lines.append(_line(membership, context, in_window, previous_checkpoint, coverage))
 
@@ -135,15 +141,20 @@ def _line(
     name = getattr(context, "name", membership.symbol)
     tier_name = tier.value if isinstance(tier, CoverageTier) else str(tier)
 
-    if previous_checkpoint is not None and membership.added_at > previous_checkpoint:
+    # "Newly added" whenever the membership — not the checkpoint — is what bounds our
+    # observation. On a first review there is no checkpoint at all, so every company is
+    # newly added; calling it "no meaningful change since your last review" would invent
+    # a review that never happened and a history we never watched.
+    if previous_checkpoint is None or membership.added_at > previous_checkpoint:
         return CompanyLine(
             symbol=membership.symbol,
             company_name=name,
             coverage_tier=tier_name,
             state="new",
             detail=(
-                "Added during this window. We did not watch this company for you before "
-                f"{membership.added_at.isoformat()}, so nothing earlier is reported as missed."
+                "Watched from "
+                f"{membership.added_at.isoformat()}. Nothing before that is reported as "
+                "missed, because we were not watching it for you yet."
             ),
             assessments=tuple(in_window),
         )

@@ -1,9 +1,8 @@
 # Status
 
-**Where the build is:** Step 4 complete and reviewed. Accounts, watchlists and review
-checkpoints exist, so the product now answers *"what changed since **you** last checked"*
-rather than *"what does the system know"*. Ingestion is still manual and lifecycle is not
-built.
+**Where the build is:** scheduled ingestion complete and reviewed. The system now
+observes unattended, so *"what changed while you were gone"* is operationally true and
+not merely implemented. Lifecycle and generated summaries are not built.
 
 ## What Step 0 established
 
@@ -38,6 +37,39 @@ Proven, by running it — not by design intent:
 
 The Step 0 review gate was completed only after a blocking coverage defect was found
 and corrected — see the CHANGELOG entry.
+
+## What scheduled ingestion established
+
+- **Ingestion runs without anyone calling an endpoint.** An in-process asyncio scheduler
+  in the application's lifespan, one cycle at a time, explicit interval. Demonstrated
+  live: a user completed a review, went away, a scheduled cycle ingested 218 assessments,
+  and on return their review showed **16 assessed changes** — checkpoint untouched.
+- **One ingestion path.** `POST /ingest` and the scheduled tick both call `run_cycle`, so
+  the operator affordance exercises exactly the unattended code. A manual trigger during
+  an active cycle returns **409 busy** rather than queueing.
+- **A run is recorded before anything it produces.** Each pipeline writes its run as
+  `RUNNING` with its own source marked unavailable, then replaces it with the outcome. A
+  process killed mid-cycle leaves a record that says so, and startup reaps anything still
+  `RUNNING` as `INTERRUPTED` — nothing but a crash can leave that state.
+- **A run that failed or was interrupted is never healthy**, whatever partial coverage it
+  recorded. Old healthy coverage cannot survive a failed newer attempt.
+- **Families fail independently.** A news outage is a fact about news; market and
+  disclosures still update. Verified for each of the three.
+- **Model exhaustion is not source failure.** Gemini returning nothing degrades to the
+  separately-provenanced rule extractor and the cycle still reports `succeeded`.
+- **Nothing external happens on page render.** The UI reads persisted intelligence only.
+
+## What scheduled ingestion did *not* establish
+
+- **The rule fallback's precision is visible at scale.** With Gemini's daily quota spent,
+  most articles take the rule extractor, which cannot tell that an article is about a
+  *different* company. A live review surfaced "Goodluck India alters MoA and appoints new
+  Group CFO" under RELIANCE. Gemini rejects that class of article correctly; the fallback
+  has no mechanism to. This is the known Step 2 limitation, now more visible because
+  unattended ingestion runs far beyond the model's budget.
+- **No retry or backoff.** A failed family simply fails and waits for the next interval.
+- **Single process only.** The overlap guard is an in-process flag, which is correct for
+  this deployment and insufficient for two.
 
 ## What Step 4 established
 
@@ -202,8 +234,7 @@ Then: lifecycle and summaries (E, F) → frontend. Scenario letters refer to the
 
 ## Known gaps in what exists
 
-- **Ingestion is manual** — `POST /ingest`. Step 3 puts it on a schedule; until then the
-  system cannot answer "what changed while I was gone" (D3).
+- ~~**Ingestion is manual.**~~ **Closed** — the scheduler runs unattended.
 - **The curated universe is 8 companies**, not 50. Everything else is `LIMITED` and says
   so. Depth over breadth (D19).
 - **`save_run` is called after the assessment loop**, so a mid-loop persistence failure

@@ -18,7 +18,7 @@ from .engine import assess
 from .extraction import ExtractedEvent, Extraction, validate
 from .linking import LINK_WINDOW, LinkOutcome, decide_link
 from .market import observe
-from .models import Coverage, CoverageRecord, CoverageStatus, Event, IngestRun
+from .models import Coverage, CoverageRecord, CoverageStatus, Event, IngestRun, RunStatus
 from .normalize import from_observation, to_candidate
 
 if TYPE_CHECKING:
@@ -81,6 +81,7 @@ def run_disclosure_pipeline(
     the failure this system exists to avoid (VISION.md §14, DESIGN.md D15).
     """
     now = datetime.now(UTC)
+    started = _begin_run(store, source.name, now)
     evidence_list, source_coverage = source.fetch()
 
     observations, market_coverage = _observe_disclosed(market, evidence_list, now)
@@ -102,14 +103,7 @@ def run_disclosure_pipeline(
         store.save(assessment)
         assessments.append(assessment)
 
-    run = IngestRun(
-        run_id=f"{source.name}:{now.isoformat()}",
-        source=source.name,
-        started_at=now,
-        coverage=coverage,
-        assessed_count=len(assessments),
-    )
-    store.save_run(run)
+    run = _finish_run(store, started, coverage, len(assessments), datetime.now(UTC))
     return run, assessments
 
 
@@ -127,6 +121,7 @@ def run_market_pipeline(
     in step 4; here it is simply the absence of anything worth recording.
     """
     now = datetime.now(UTC)
+    started = _begin_run(store, source.name, now)
     symbols = curated_symbols()
     indices = tuple({c for c in (context_for(s, s).sector_index for s in symbols) if c})
     bars, market_coverage = source.fetch([*symbols, *indices, BROAD_INDEX])
@@ -167,14 +162,13 @@ def run_market_pipeline(
             )
         )
 
-    run = IngestRun(
-        run_id=f"{source.name}:{now.isoformat()}",
-        source=source.name,
-        started_at=now,
-        coverage=Coverage(records=(market_coverage, news_gap, disclosure_gap)),
-        assessed_count=len(assessments),
+    run = _finish_run(
+        store,
+        started,
+        Coverage(records=(market_coverage, news_gap, disclosure_gap)),
+        len(assessments),
+        datetime.now(UTC),
     )
-    store.save_run(run)
     return run, assessments
 
 
@@ -270,6 +264,7 @@ def run_news_pipeline(
     stopping the flow of news into the domain (D5).
     """
     now = datetime.now(UTC)
+    started = _begin_run(store, source.name, now)
     companies = [(symbol, context_for(symbol, symbol).name) for symbol in curated_symbols()]
     evidence_list, news_coverage = source.fetch(companies)
 
@@ -290,14 +285,7 @@ def run_news_pipeline(
         if assessment is not None:
             assessments.append(assessment)
 
-    run = IngestRun(
-        run_id=f"{source.name}:{now.isoformat()}",
-        source=source.name,
-        started_at=now,
-        coverage=coverage,
-        assessed_count=len(assessments),
-    )
-    store.save_run(run)
+    run = _finish_run(store, started, coverage, len(assessments), datetime.now(UTC))
     return run, assessments
 
 
@@ -442,3 +430,55 @@ def _string_tuple(value: object) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
     return tuple(v for v in value if isinstance(v, str))
+
+
+def _begin_run(store: AssessmentStore, source: str, now: datetime) -> IngestRun:
+    """Record that a run started, before anything it produces can be persisted.
+
+    Written with its own source marked unavailable and status RUNNING, so a process
+    killed mid-cycle leaves a record reading "we were looking and never reported back" —
+    never the previous run's health standing as current (D20).
+    """
+    run = IngestRun(
+        run_id=f"{source}:{now.isoformat()}",
+        source=source,
+        started_at=now,
+        coverage=Coverage(
+            records=(
+                CoverageRecord(
+                    source=source,
+                    status=CoverageStatus.UNAVAILABLE,
+                    observed_at=now,
+                    detail="Run in progress; no result reported yet.",
+                ),
+            )
+        ),
+        assessed_count=0,
+        status=RunStatus.RUNNING,
+    )
+    store.save_run(run)
+    return run
+
+
+def _finish_run(
+    store: AssessmentStore,
+    started: IngestRun,
+    coverage: Coverage,
+    assessed: int,
+    finished_at: datetime,
+    status: RunStatus = RunStatus.COMPLETED,
+    detail: str = "",
+) -> IngestRun:
+    """Replace the in-progress record with the outcome, under the same run id."""
+    run = IngestRun(
+        run_id=started.run_id,
+        source=started.source,
+        started_at=started.started_at,
+        coverage=coverage,
+        assessed_count=assessed,
+        status=status,
+        finished_at=finished_at,
+        detail=detail,
+    )
+    store.save_run(run)
+    return run

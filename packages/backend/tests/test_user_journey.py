@@ -130,8 +130,17 @@ def test_two_users_share_intelligence_but_not_reviews(app_module) -> None:
     alice_second = alice.get("/review").json()
     bob_first = bob.get("/review").json()
 
-    alice_refs = {a["event_id"] for line in alice_second["changed"] for a in line["assessments"]}
-    bob_refs = {a["event_id"] for line in bob_first["changed"] for a in line["assessments"]}
+    def surfaced(review: dict) -> set[str]:
+        """Everything the user is shown, whichever section carries it."""
+        return {
+            a["event_id"]
+            for section in ("changed", "newly_added")
+            for line in review[section]
+            for a in line["assessments"]
+        }
+
+    alice_refs = surfaced(alice_second)
+    bob_refs = surfaced(bob_first)
 
     assert alice_refs == {"shared-2"}, "Alice already reviewed the first"
     assert bob_refs == {"shared-1", "shared-2"}, "Bob has never reviewed"
@@ -208,3 +217,71 @@ def test_a_client_cannot_submit_a_cutoff_it_was_never_issued(app_module) -> None
 
     assert forged.status_code == 404
     assert alice.get("/review").json()["previous_checkpoint"] is None
+
+
+def test_a_first_review_calls_companies_newly_added_not_quiet(app_module) -> None:
+    """There was no last review, so "nothing since your last review" would invent one.
+
+    Found live: a user who registered and added a company immediately saw it reported as
+    quiet, even though the system had not been watching it for them at all.
+    """
+    alice = account(app_module, "alice@example.com")
+    alice.post("/watchlist", json={"symbol": "RELIANCE"})
+
+    first = alice.get("/review").json()
+
+    assert first["previous_checkpoint"] is None
+    assert [line["symbol"] for line in first["newly_added"]] == ["RELIANCE"]
+    assert first["quiet"] == [], "nothing can be quiet before we started watching"
+    assert "not watching it for you yet" in first["newly_added"][0]["detail"]
+
+
+def test_after_a_completed_review_a_company_can_be_quiet(app_module) -> None:
+    """Once a checkpoint exists, silence is a conclusion the system has standing to draw."""
+    alice = account(app_module, "alice@example.com")
+    alice.post("/watchlist", json={"symbol": "RELIANCE"})
+    first = alice.get("/review").json()
+    alice.post("/review/complete", json={"review_id": first["review_id"]})
+
+    second = alice.get("/review").json()
+
+    assert [line["symbol"] for line in second["quiet"]] == ["RELIANCE"]
+    assert second["newly_added"] == []
+
+
+def test_an_event_published_before_the_checkpoint_but_learned_after_is_still_new(
+    app_module,
+) -> None:
+    """The window measures when we learned, not when it happened.
+
+    Found live: a scheduled cycle ingested 218 assessments while the user was away, and
+    their review showed nothing — every article had been *published* before their
+    checkpoint even though the system only learned of it afterwards. DESIGN.md §20
+    requires late-arriving events to stay new to the user.
+    """
+    from datetime import timedelta
+
+    alice = account(app_module, "alice@example.com")
+    alice.post("/watchlist", json={"symbol": "RELIANCE"})
+    first = alice.get("/review").json()
+    alice.post("/review/complete", json={"review_id": first["review_id"]})
+
+    # Published yesterday; ingested now, after the checkpoint.
+    store_assessment(
+        app_module, "RELIANCE", datetime.now(UTC) - timedelta(days=1), "published-yesterday"
+    )
+
+    following = alice.get("/review").json()
+
+    surfaced = {a["event_id"] for line in following["changed"] for a in line["assessments"]}
+    assert "published-yesterday" in surfaced
+    # And the event still reports its own publication time, not the time we learned it.
+    shown = next(
+        a
+        for line in following["changed"]
+        for a in line["assessments"]
+        if a["event_id"] == "published-yesterday"
+    )
+    assert datetime.fromisoformat(shown["occurred_at"]) < datetime.fromisoformat(
+        following["previous_checkpoint"]
+    )
