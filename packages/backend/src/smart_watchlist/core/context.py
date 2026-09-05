@@ -95,9 +95,18 @@ def context_for(symbol: str, name: str) -> CompanyContext:
             sector_index=sector_index,
             aliases=(symbol, curated_name, *aliases),
         )
-    # Outside the curated universe there are no vetted aliases, so the only name we can
-    # defend is the one we were given.
-    return CompanyContext(symbol=symbol, name=name, tier=CoverageTier.LIMITED, aliases=(symbol,))
+    # Outside the curated universe there are no vetted short forms, so the aliases are the
+    # ticker and the name we were given — nothing inferred. The given name is safe to use
+    # here even though it comes from the retrieval context: it is only ever a candidate,
+    # and the headline still has to name it independently before anything is attributed.
+    # Without it a limited-coverage company would match only its raw ticker, which real
+    # headlines never use, and its news would be refused wholesale.
+    return CompanyContext(
+        symbol=symbol,
+        name=name,
+        tier=CoverageTier.LIMITED,
+        aliases=tuple({symbol, name.strip()} - {""}),
+    )
 
 
 def curated_symbols() -> tuple[str, ...]:

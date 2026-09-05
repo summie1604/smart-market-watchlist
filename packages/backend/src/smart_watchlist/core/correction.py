@@ -15,8 +15,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from ..adapters.rule_extractor import EXTRACTOR_NAME as RULE_NAME
-from ..adapters.rule_extractor import subject_rejection
+from .attribution import subject_rejection
 
 if TYPE_CHECKING:
     from .ports import AssessmentStore
@@ -36,13 +35,19 @@ class CorrectionReport:
 
 
 def correct_unsupported_attribution(
-    store: AssessmentStore, dry_run: bool = False
+    store: AssessmentStore, dry_run: bool = False, reviewer: str = "core/attribution/v1"
 ) -> CorrectionReport:
     """Withdraw assessments whose evidence never supported the company they name.
 
-    Only rule-derived news assessments are re-checked. A model extraction read the article
-    body and can support an attribution this bounded rule cannot see, so re-judging one by
-    the other's standard would discard sound work.
+    Only events resting *entirely* on news evidence are re-checked. An event that also
+    carries a filing or a computed market observation stands on those, which are not
+    attributed by headline at all.
+
+    A model extraction read the article body and can support an attribution this bounded
+    rule cannot see, so re-judging one by the other's standard would discard sound work.
+
+    ``store.recent`` bounds this to the most recent 1000 assessments; a larger store would
+    need paging, and the report says what it checked.
     """
     report = CorrectionReport()
     now = datetime.now(UTC)
@@ -52,6 +57,13 @@ def correct_unsupported_attribution(
         news_evidence = [e for e in event.evidence if e.source == "news"]
         if not news_evidence:
             continue  # market observations and filings are not attributed by headline
+
+        if len(news_evidence) != len(event.evidence):
+            # The event also rests on a filing or a computed observation, and those are
+            # not attributed by headline. Withdrawing it because a news article failed
+            # grounding would destroy authoritative intelligence to remove a weaker claim
+            # attached to it — the opposite of a narrow correction.
+            continue
 
         report.checked += 1
         # Supported if *any* piece of its evidence would still pass grounding today.
@@ -65,7 +77,7 @@ def correct_unsupported_attribution(
             continue
 
         for evidence in news_evidence:
-            store.record_rejection(evidence, reason, RULE_NAME, now)
+            store.record_rejection(evidence, reason, reviewer, now)
         store.delete_assessment(event.event_id)
 
     return report

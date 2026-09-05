@@ -13,14 +13,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
-    "ruff",
-    "ty",
-    "pytest",
-    "pytest-cov",
-    "httpx",
-    "pytest-asyncio>=1.4.0",
-]
+dev = ["ruff", "ty", "pytest", "pytest-cov", "pytest-asyncio>=1.4.0"]
 
 [build-system]
 requires = ["uv_build>=0.9,<0.13"]

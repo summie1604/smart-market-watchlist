@@ -36,6 +36,22 @@ version now has a tested upgrade path to head.
 **Health dimensions stay separate:** acquisition succeeded, interpretation declined. A
 refused article never marks the news source unavailable, and the run stays healthy.
 
+**Review-gate findings, fixed after the first commit:**
+
+- *Correction destroyed events an exchange filing supported.* An event carrying both a
+  filing and a misattributed news article was deleted outright, because every piece of
+  *news* evidence failed grounding. Filings are not attributed by headline and must not be
+  judged by a headline rule; events resting only partly on news are now left alone. That
+  was data loss, and irreversible.
+- *Subject grounding lived in an adapter while core depended on it.* `core/correction.py`
+  imported from `adapters/`, inverting the layering the conventions fix. Deciding whether
+  evidence supports an attribution is domain logic, so it moved to `core/attribution.py`;
+  the adapter now imports it in the right direction and the import-cycle workaround is
+  gone.
+- *A limited-coverage company's only alias was its raw ticker*, which real headlines never
+  use, so its news would have been refused wholesale. Currently unreachable — news is only
+  fetched for curated symbols — but a trap for the day that changes.
+
 **Rejected:**
 
 - *Blacklisting Goodluck India, or special-casing RELIANCE.* The rule is general or it is

@@ -278,3 +278,92 @@ def test_correction_leaves_market_and_disclosure_assessments_alone(tmp_path) -> 
 
     assert report.checked == 0
     assert len(store.recent(50)) == 1
+
+
+def test_correction_does_not_destroy_an_event_a_filing_supports(tmp_path) -> None:
+    """A narrow correction removes a weak claim, not the authoritative one beside it.
+
+    Found by review: an event carrying both an exchange filing and a misattributed news
+    article was deleted outright, because every piece of *news* evidence failed grounding.
+    Filings are not attributed by headline and must not be judged by a headline rule.
+    """
+    from smart_watchlist.adapters.sqlite_store import SqliteAssessmentStore
+    from smart_watchlist.core.correction import correct_unsupported_attribution
+    from smart_watchlist.core.engine import assess
+    from smart_watchlist.core.models import Coverage, Event
+
+    store = SqliteAssessmentStore(tmp_path / "mixed.db")
+    now = datetime.now(UTC)
+
+    def evidence(source: str, tier: SourceTier, title: str, ref: str) -> Evidence:
+        return Evidence(
+            source=source,
+            source_ref=ref,
+            tier=tier,
+            publisher="Publisher",
+            subject_company="Reliance Industries",
+            retrieved_at=now,
+            published_at=now,
+            title=title,
+            body="",
+            url="https://example.invalid",
+            security_symbol="RELIANCE",
+            category="News",
+        )
+
+    store.save(
+        assess(
+            Event(
+                event_id="filing-backed",
+                security_symbol="RELIANCE",
+                company_name="Reliance Industries",
+                event_type="Outcome of Board Meeting",
+                description="Board meeting outcome",
+                occurred_at=now,
+                evidence=(
+                    evidence(
+                        "nse-disclosures",
+                        SourceTier.OFFICIAL_DISCLOSURE,
+                        "Reliance Industries informs the exchange of a board meeting outcome",
+                        "f1",
+                    ),
+                    evidence(
+                        "news",
+                        SourceTier.CREDIBLE_REPORTING,
+                        "Goodluck India alters MoA and appoints new Group CFO",
+                        "n1",
+                    ),
+                ),
+            ),
+            Coverage(records=()),
+        )
+    )
+
+    report = correct_unsupported_attribution(store)
+
+    assert report.removed == [], "an event a filing supports must survive"
+    assert [a.event.event_id for a in store.recent(10)] == ["filing-backed"]
+
+
+def test_a_limited_coverage_company_can_still_be_named_by_its_name() -> None:
+    """Uncurated companies have no vetted short forms, but their name is still a name.
+
+    With only the raw ticker as an alias, every real headline would be refused — tickers
+    do not appear in prose. The given name is a candidate only; the headline must still
+    name it, so retrieval context is not being trusted as identity.
+    """
+    from smart_watchlist.core.attribution import subject_rejection
+
+    named = from_feed(
+        "ABM International Limited announces a new contract",
+        symbol="ABMINTLLTD",
+        company="ABM International Limited",
+    )
+    unrelated = from_feed(
+        "Some other company announces a new contract",
+        symbol="ABMINTLLTD",
+        company="ABM International Limited",
+    )
+
+    assert subject_rejection(named) is None
+    assert subject_rejection(unrelated) == "subject-not-named-in-headline"

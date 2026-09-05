@@ -86,8 +86,9 @@ Other listed companies share that word, so a headline about one of them could pa
 subject-position rules remove the common cases; the remainder is why short aliases are
 curated one at a time rather than generated.
 
-**Known limit:** correction reads the most recent 1000 assessments. Larger stores would
-need paging.
+**Known limits:** correction reads the most recent 1000 assessments, so larger stores would
+need paging. Events resting partly on a filing or a market observation are never re-judged
+by a headline rule — they stand on evidence that was not attributed by headline.
 
 ## What scheduled ingestion did *not* establish
 
