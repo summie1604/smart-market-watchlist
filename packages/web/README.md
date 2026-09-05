@@ -11,6 +11,10 @@ make test
 make run     # http://localhost:4321
 ```
 
+`PUBLIC_API_BASE` sets the API URL the browser calls (default `http://localhost:8000`).
+It is inlined into the client bundle and must never hold a secret — see
+[Configuration](../../README.md#configuration).
+
 ## The boundary that matters
 
 **This package reproduces no engine logic.** It renders attention levels, coverage

@@ -21,3 +21,6 @@ packages/web/dist/
 *.db-wal
 *.db-shm
 .env
+
+# macOS
+.DS_Store

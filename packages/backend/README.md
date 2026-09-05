@@ -16,6 +16,9 @@ make lint
 make run     # http://localhost:8000
 ```
 
+`WATCHLIST_DB` sets the SQLite path (default `watchlist.db`); see
+[Configuration](../../README.md#configuration).
+
 ## Layout
 
 - `src/smart_watchlist/core/` — the engine. Pure logic, no I/O assumptions, no framework

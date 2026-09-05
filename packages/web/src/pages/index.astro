@@ -1,10 +1,23 @@
 ---
 import Base from "../layouts/Base.astro";
+import AssessmentList from "../components/AssessmentList";
 ---
 
-<Base title="Smart Market Watchlist">
-  <main>
+<Base title="Smart Market Watchlist — Step 0">
+  <main style="max-width: 52rem; margin: 2rem auto; padding: 0 1rem; font-family: system-ui, sans-serif;">
     <h1>Smart Market Watchlist</h1>
-    <p>Scaffold only. Step 0 replaces this with the disclosure spike surface.</p>
+    <p>
+      <strong>Step 0 — the disclosure spike.</strong> One authoritative source travelling
+      the whole path: exchange filing → adapter → evidence → normalization → event
+      candidate → provenance → the Meaningful Change Engine → persisted assessment →
+      this page.
+    </p>
+    <p style="font-size: 0.9em;">
+      Deliberately unstyled. The market and news adapters do not exist yet, so most
+      verdicts read <em>unable to evaluate reliably</em> rather than <em>no meaningful
+      change</em> — the system declining to call silence a conclusion.
+    </p>
+    <hr />
+    <AssessmentList client:load />
   </main>
 </Base>

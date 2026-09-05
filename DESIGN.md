@@ -6,7 +6,9 @@ This document records the architectural decisions behind the Smart Market Watchl
 
 It is not an implementation spec. Nothing here should be recoverable by reading the code; everything here should be hard to recover from the code alone.
 
-**Status: frozen.** The decisions below are settled and implementation proceeds against them. This document reopens when implementation exposes a decision that is genuinely missing — not to add architecture that seemed like a good idea afterwards.
+**Status: frozen, with D20–D22 appended after Step 0.** The initial design was frozen before implementation. D20–D22 were appended after Step 0 exposed previously unresolved implementation boundaries. These are recorded design decisions resulting from the review process, not silent changes to the frozen architecture.
+
+The freeze means implementation must not silently redefine architecture. It does not mean implementation can never expose a missing decision. D1–D19 are unchanged and unrenumbered.
 
 Every decision below is judged against [`VISION.md`](VISION.md). Where a decision is driven by a specific vision section, it says so.
 
@@ -425,6 +427,43 @@ E and F are the pair that matters most: together they show the system distinguis
 - **Options:** **A** — a small set of companies exercising every capability end to end. **B** — all fifty curated companies at whatever depth time allows.
 - **Chose:** A. The architecture supports the curated universe (D11), but the demonstration does not need every company to exercise every capability. Five to ten companies with genuine event identity, provenance, lifecycle, scoring, coverage states and "since last review" behaviour is a stronger showing than fifty companies of price-and-headline cards — which is the obvious watchlist the brief explicitly asks us not to build.
 - **Consequences:** curation effort concentrates where it is visible. Companies outside the demo set still work; they simply may not have a scenario that exercises lifecycle or resolution. This is a demo-scope decision, not an architectural limit, and the distinction should be stated when presenting rather than glossed.
+
+---
+
+*The decisions below were appended after Step 0. Each records a boundary the original
+design left unresolved rather than a reversal of anything above it.*
+
+### D20 — Run-level coverage is independent of assessments
+
+- **Decision:** Coverage and fetch health are persisted for an ingestion run independently of whether that run produced any evidence, events or assessments. An empty or failed source run is itself meaningful system state.
+- **Why:** This is what preserves the distinction between `NO_MEANINGFUL_CHANGE` and `UNABLE_TO_EVALUATE_RELIABLY` (D15, VISION.md §14). A previous successful assessment must never make a later failed ingestion appear healthy. Coverage belongs to the evaluation context, not to individual assessment rows.
+- **Options:**
+  - **A** — store coverage only on assessments. **Rejected:** a zero-evidence run produces no assessment on which to record the current source state, so the failure leaves no trace at all.
+  - **B** — infer source health from the most recent assessment. **Rejected:** an old successful assessment outlives a newer failed ingestion, so stale coverage reads as current — the precise failure this decision exists to prevent.
+  - **C** — treat ingestion failure as an operational or logging concern only. **Rejected:** source availability directly changes what product conclusion the system is *allowed* to reach. Logging records what happened; coverage constrains what may be said.
+  - **D (chosen)** — persist a run record unconditionally, and derive current source health from the latest run.
+- **Consequences:** the API exposes source health as a top-level field rather than something reachable through an assessment, because the case that matters most is the one with no assessments. Absence of a failure record is not evidence of success: a run carrying no coverage record for its own source is treated as unhealthy, not healthy.
+- **Found by:** the Step 0 review gate, before Step 0 was accepted.
+
+### D21 — Evidence publisher and subject are distinct
+
+- **Decision:** Evidence explicitly distinguishes the organisation that published it from the company or security it concerns — `publisher = NSE`, `subject_company = Hindalco`; `publisher = Reuters`, `subject_company = Tata Motors`. Normalization and event identity resolve company identity from the subject reference, never from the publisher.
+- **Why:** For exchange filings the two coincide, which makes the conflation invisible until a second source type arrives. It is not invisible in consequence: with a news adapter, every event would be attributed to the outlet rather than the company. Disclosure metadata that makes publisher-like fields resemble company identity must not leak into the domain model.
+- **Options:**
+  - **A** — continue using publisher as company identity. **Rejected:** correct only by accident of the current adapter, and wrong immediately for news and every other source type.
+  - **B** — pass company identity separately inside each adapter without representing it in `Evidence`. **Rejected:** the subject is part of evidence semantics and must stay traceable through normalization and provenance, not be reconstructed per adapter.
+  - **C (chosen)** — one explicit field on `Evidence`, no more generic than the MVP needs.
+- **Consequences:** the distinction exists before the news adapter lands, which is when D12's linking work starts depending on it. No entity-resolution layer is introduced — the field is a name, not a graph.
+
+### D22 — Canonical attention ranking is backend-owned
+
+- **Decision:** The Meaningful Change Engine owns the canonical ordering of assessments. The API returns them in that order and the frontend renders it unchanged by default. Reader-selected presentation sorts — by company, recency, confidence, attention — are a separate concern and belong to the frontend.
+- **Why:** Canonical ranking is a product decision about what deserves attention first, and it must be consistent across every client. A view sort is a request from one reader about one screen. Collapsing the two puts a product answer in a place where it can diverge.
+- **Options:**
+  - **A** — reproduce attention ranking in TypeScript. **Rejected:** two implementations of one piece of product logic, free to drift.
+  - **B** — move all ranking to the frontend. **Rejected:** ranking belongs with the engine that produced the assessments and the reason codes behind them; a second client would answer the same question differently.
+  - **C (chosen)** — canonical ranking in the backend, view sorts in the frontend, with the boundary stated.
+- **Consequences:** sharpens D2's rule that the frontend renders verdicts and never computes one — ordering by verdict is now explicitly part of the verdict. A client that applies no sort must return the received order untouched.
 
 ---
 

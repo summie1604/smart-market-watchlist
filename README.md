@@ -32,3 +32,28 @@ make run-web    # web only
 ```
 
 Local-first: SQLite, no external services required to start.
+
+Ingestion is manual for now — with the API running:
+
+```bash
+curl -X POST localhost:8000/ingest
+```
+
+### Configuration
+
+Both variables are optional. The defaults are what `make run` uses, so a fresh clone
+needs no configuration at all.
+
+| Variable | Package | Controls | Default | Override when |
+|---|---|---|---|---|
+| `WATCHLIST_DB` | `packages/backend` | Path to the SQLite file holding shared intelligence — assessments, evidence and ingest-run coverage | `watchlist.db` in the working directory | Running more than one instance, keeping a seeded demo database separate from a working one, or placing state outside the repo |
+| `PUBLIC_API_BASE` | `packages/web` | Base URL the browser uses to reach the API | `http://localhost:8000` | Demoing from a machine other than the one serving the API, or running the API on a non-default port |
+
+```bash
+WATCHLIST_DB=./demo.db make run-api
+PUBLIC_API_BASE=http://192.168.1.20:8000 make run-web
+```
+
+`PUBLIC_API_BASE` is **public frontend configuration**. Astro inlines any `PUBLIC_`
+variable into the browser bundle, so its value is visible to anyone who loads the page.
+It must never hold a secret, a token, or a credentialed URL.
