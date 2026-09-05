@@ -98,3 +98,59 @@ def test_health_is_none_only_when_nothing_has_ever_run(client) -> None:
 
     assert body["source_health"] is None
     assert body["runs"] == []
+
+
+def test_each_source_family_is_judged_by_its_own_run(client) -> None:
+    """A run saying "I did not consult news" is not a statement about news's health.
+
+    Regression: pooling every run's records let a market run's "news not consulted"
+    override the news run's own healthy record, so news read as missing while it was
+    fine — and every company came back "unable to evaluate", making the honest quiet
+    verdict unreachable.
+    """
+    import smart_watchlist.api.app as app_module
+    from smart_watchlist.core.models import Coverage, CoverageRecord, CoverageStatus, IngestRun
+
+    now = datetime.now(UTC)
+    store = app_module._store()
+    store.save_run(
+        IngestRun(
+            run_id="news:1",
+            source="news",
+            started_at=now,
+            coverage=Coverage(
+                records=(
+                    CoverageRecord(
+                        source="news", status=CoverageStatus.OK, observed_at=now, detail="ok"
+                    ),
+                )
+            ),
+            assessed_count=1,
+        )
+    )
+    store.save_run(
+        IngestRun(
+            run_id="market:1",
+            source="market",
+            started_at=now,
+            coverage=Coverage(
+                records=(
+                    CoverageRecord(
+                        source="market", status=CoverageStatus.OK, observed_at=now, detail="ok"
+                    ),
+                    CoverageRecord(
+                        source="news",
+                        status=CoverageStatus.UNAVAILABLE,
+                        observed_at=now,
+                        detail="not consulted by this run",
+                    ),
+                )
+            ),
+            assessed_count=1,
+        )
+    )
+
+    coverage = app_module._current_coverage(store)
+
+    assert {r.source for r in coverage.missing} == set(), "news is healthy per its own run"
+    assert coverage.is_complete

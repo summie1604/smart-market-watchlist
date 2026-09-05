@@ -33,14 +33,16 @@ __all__ = [
     "run_news_pipeline",
 ]
 
-NOT_BUILT_SOURCES = ("news",)
+NOT_BUILT_SOURCES: tuple[str, ...] = ()
 """Source families the design calls for that this step has not built.
 
 Declared rather than omitted: an expected source that is absent is missing coverage,
 and every verdict produced now must carry that. Silence about a gap would be the one
 failure the product cannot afford.
 
-The market adapter left this list in step 1. News remains.
+The market adapter left this list in step 1, the news adapter in step 2, so it is now
+empty. The mechanism stays: the next source family the design calls for and the build
+lacks is declared here rather than omitted.
 """
 
 

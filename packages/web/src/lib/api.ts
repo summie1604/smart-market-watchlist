@@ -142,3 +142,84 @@ export function applyViewSort(assessments: Assessment[], sort: ViewSort): Assess
       );
   }
 }
+
+
+// --- user state (Step 4) -------------------------------------------------------
+
+export interface Account {
+  user_id: string;
+  email: string;
+}
+
+export interface WatchedCompany {
+  symbol: string;
+  company: string;
+  coverage_tier: string;
+  added_at: string;
+  watched_from: string;
+}
+
+export interface ReviewLine {
+  symbol: string;
+  company: string;
+  coverage_tier: string;
+  state: "changed" | "quiet" | "unable" | "new";
+  detail: string;
+  assessments: Assessment[];
+}
+
+export interface ReviewPage {
+  review_id: string;
+  previous_checkpoint: string | null;
+  review_cutoff: string;
+  attention_count: number;
+  changed: ReviewLine[];
+  newly_added: ReviewLine[];
+  unable: ReviewLine[];
+  quiet: ReviewLine[];
+}
+
+/**
+ * Every private call sends the session cookie and nothing else.
+ *
+ * The client holds no user id, no checkpoint and no cutoff it could alter: it returns a
+ * review's identity and the server resolves what that review committed to.
+ */
+async function call<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
+    throw new Error(typeof body.detail === "string" ? body.detail : `Request failed (${response.status})`);
+  }
+  return (await response.json()) as T;
+}
+
+export const auth = {
+  me: () => call<Account>("/auth/me"),
+  register: (email: string, password: string) =>
+    call<Account>("/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
+  login: (email: string, password: string) =>
+    call<Account>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  logout: () => call<{ status: string }>("/auth/logout", { method: "POST" }),
+};
+
+export const watchlist = {
+  list: () => call<{ companies: WatchedCompany[] }>("/watchlist"),
+  add: (symbol: string) =>
+    call<WatchedCompany>("/watchlist", { method: "POST", body: JSON.stringify({ symbol }) }),
+  remove: (symbol: string) =>
+    call<{ symbol: string; removed: boolean }>(`/watchlist/${symbol}`, { method: "DELETE" }),
+};
+
+export const review = {
+  open: () => call<ReviewPage>("/review"),
+  complete: (reviewId: string) =>
+    call<{ checkpoint: string; outcome: string }>("/review/complete", {
+      method: "POST",
+      body: JSON.stringify({ review_id: reviewId }),
+    }),
+};

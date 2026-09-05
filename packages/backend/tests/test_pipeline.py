@@ -56,14 +56,19 @@ def test_reingesting_the_same_disclosure_does_not_duplicate_it(tmp_path) -> None
     assert len(store.recent()) == 1
 
 
-def test_unbuilt_source_families_are_declared_as_missing_coverage(tmp_path) -> None:
-    """An expected source that does not exist yet is a coverage gap, not silence."""
+def test_an_unconsulted_source_family_is_still_declared(tmp_path) -> None:
+    """Every source family this run did not consult is named, never omitted.
+
+    The news adapter exists now, so ``NOT_BUILT_SOURCES`` is empty — but a disclosure run
+    that does not consult market or news must still say so, because a verdict produced
+    without them is a weaker verdict.
+    """
     store = SqliteAssessmentStore(tmp_path / "t.db")
 
     _run, assessed = run_disclosure_pipeline(FakeDisclosureSource([make_evidence()]), store)
 
     missing = {r.source for r in assessed[0].coverage.missing}
-    assert "news" in missing, "the news adapter does not exist yet"
+    assert "market" in missing, "market was not consulted by this run"
     assert not assessed[0].coverage.is_complete
 
 

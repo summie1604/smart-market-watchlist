@@ -1,8 +1,9 @@
 # Status
 
-**Where the build is:** Step 2 complete and reviewed. News joins market data and
-exchange disclosures, with structured extraction, conservative event linking and
-independent-source corroboration. No user state yet.
+**Where the build is:** Step 4 complete and reviewed. Accounts, watchlists and review
+checkpoints exist, so the product now answers *"what changed since **you** last checked"*
+rather than *"what does the system know"*. Ingestion is still manual and lifecycle is not
+built.
 
 ## What Step 0 established
 
@@ -37,6 +38,40 @@ Proven, by running it — not by design intent:
 
 The Step 0 review gate was completed only after a blocking coverage defect was found
 and corrected — see the CHANGELOG entry.
+
+## What Step 4 established
+
+- **Two accounts, one analysis, two reviews.** Alice and Bob watching the same company
+  read the same underlying assessment records; only the window differs. Verified live and
+  in tests: after Alice completes a review she sees only what arrived since, while Bob —
+  who has never reviewed — sees everything.
+- **The review window is `(previous_checkpoint, review_cutoff]`**, with the cutoff issued
+  and stored by the server. Completion resolves the review by **id**, so a client cannot
+  submit a cutoff it was never issued.
+- **An event arriving mid-review stays new.** Completion advances to the issued cutoff,
+  never to the click.
+- **Nothing else advances the checkpoint** — not rendering, not refreshing, not dwelling.
+- **Advancement is monotonic and idempotent.** A stale tab submitting an older cutoff
+  reports `stale-cutoff-ignored` and changes nothing; completing twice reports
+  `already-at-this-cutoff`. Monotonicity is enforced in SQL (`MAX`), not read-then-write.
+- **Ownership is enforced by scoping, not checking.** Every private query filters on the
+  session's user, so a substituted id reaches a query that finds nothing. Bob completing
+  Alice's review returns 404 and leaves her checkpoint untouched.
+- **Coverage still outranks capability.** A newly added FULL-coverage company read
+  *"could not evaluate reliably: news, nse-disclosures"* rather than *quiet*, because
+  those sources had not been consulted.
+- **A newly added company has no manufactured history.** Its window starts when the user
+  added it, and the review says so.
+
+## What Step 4 did *not* establish
+
+- **Sessions are not cleaned up.** Expired rows remain until something deletes them.
+- **`Secure` is not set on the session cookie**, because local development is plain HTTP
+  and a Secure cookie would silently never be sent. A TLS deployment must set it.
+- **No password reset, email verification, or account deletion.** Deliberately out of
+  scope (D8); an account is currently unrecoverable if its password is lost.
+- **Ingestion is still manual.** `POST /ingest` — the system observes only when asked, so
+  "while you were gone" depends on someone having run it.
 
 ## What Step 2 established
 

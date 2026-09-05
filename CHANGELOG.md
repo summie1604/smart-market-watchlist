@@ -1,5 +1,47 @@
 # Changelog
 
+## 2026-09-05 — Step 4, user state and "since you last checked"
+
+**What:** Accounts, sessions, watchlists and review checkpoints. The product now answers
+*"what changed since **you** last checked"* instead of *"what does the system know"*.
+Shared intelligence stays shared: a watchlist holds references, and two users following
+one company read one analysis through two different windows.
+
+**The review window, which is the part worth getting right:** a review covers
+`(previous_checkpoint, review_cutoff]`, and the server issues *and stores* the cutoff when
+it assembles the review. Completion sends the review's **id**, not a timestamp — a client
+returning an id is returning a reference the server resolves, so a cutoff it was never
+issued cannot be submitted. Completion advances to that cutoff and never to the click
+time, which is what keeps an event arriving mid-review new for the next one. Advancement
+is monotonic (enforced with `MAX` in SQL, not read-then-write) and idempotent, so a stale
+tab reports `stale-cutoff-ignored` rather than silently regressing a checkpoint another
+device already moved.
+
+**Authorization is scoping, not checking.** Every private query filters on the session's
+user in SQL. A caller substituting an id reaches a query that finds nothing, rather than a
+check someone might one day forget to write.
+
+**Defect found by the review gate:** current coverage pooled the records of every ingest
+run, so a market run's "news not consulted" overrode the news run's own healthy record.
+News read as missing while it was fine, every company came back *unable to evaluate*, and
+the honest *quiet* verdict became unreachable — the guarantee inverted, with the system
+claiming ignorance it did not have. Each family is now judged by its own most recent run.
+`NOT_BUILT_SOURCES` was also still listing news, built two steps earlier.
+
+**Also fixed:** credentialed CORS was missing, so the session cookie was never sent from
+the dev origin and every private call failed — found by driving the real browser rather
+than trusting the test client.
+
+**Rejected:**
+
+- *Per-event read state and "mark all as read".* D7 — the product is not an inbox.
+- *Trusting a client-supplied cutoff or user id.* Both are claims; ids resolved
+  server-side are references.
+- *Advancing the checkpoint on render or dwell.* Information must not become old merely
+  because it was delivered.
+- *OAuth, password reset, email verification, MFA.* D8 — authentication is infrastructure
+  supporting the product, not the product.
+
 ## 2026-09-05 — Step 2 acceptance: the full 21-article evaluation
 
 **What:** The evaluation that was left at 11 of 21 calls is complete. All 21 fixture cases
