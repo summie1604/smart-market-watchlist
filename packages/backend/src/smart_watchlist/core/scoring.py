@@ -32,6 +32,15 @@ WEIGHTS: dict[str, int] = {
     "NO_DISCLOSURE_CONSULTED": -2,
     "THIN_BASELINE": -1,
     "MARKET_CORROBORATES": 1,
+    # News and corroboration
+    "COMPANY_SPECIFIC_EVENT": 3,
+    "INDEPENDENT_CORROBORATION": 2,
+    "SINGLE_SOURCE_ONLY": -1,
+    "SPECULATIVE_REPORT": -2,
+    "NEWS_COINCIDES_WITH_MOVE": 2,
+    "POSSIBLY_RELATED_EVENT": -1,
+    "EXTRACTION_DEGRADED": -1,
+    "UNSUPPORTED_FIELDS_DROPPED": -1,
     # Coverage — an absent source lowers what may be claimed, it never leaves it unchanged
     "NO_MARKET_OBSERVATION": -1,
     "NO_NEWS_CORROBORATION": -1,

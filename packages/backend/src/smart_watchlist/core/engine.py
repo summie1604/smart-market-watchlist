@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from .context import CoverageTier, context_for
+from .linking import LinkOutcome
 from .models import Assessment, Attention, Confidence, CoverageStatus, ReasonCode, SourceTier
 from .normalize import (
     CORPORATE_ACTION,
@@ -25,6 +26,9 @@ from .normalize import (
 from .scoring import SCORING_VERSION, attention_for, weight_of
 
 if TYPE_CHECKING:
+    from .corroboration import Corroboration
+    from .extraction import Extraction
+    from .linking import LinkDecision
     from .market import MarketObservation
     from .models import Coverage, Event
 
@@ -39,7 +43,12 @@ def _reason(code: str, detail: str) -> ReasonCode:
 
 
 def assess(
-    event: Event, coverage: Coverage, observation: MarketObservation | None = None
+    event: Event,
+    coverage: Coverage,
+    observation: MarketObservation | None = None,
+    corroboration: Corroboration | None = None,
+    extraction: Extraction | None = None,
+    link: LinkDecision | None = None,
 ) -> Assessment:
     """Decide what this event asks of a user, and record why.
 
@@ -62,11 +71,16 @@ def assess(
             )
         )
 
-    if event.event_type in MATERIAL_EVENT_TYPES:
+    # MATERIAL_EVENT_TYPE reads the *disclosure* category. For a news-derived event the
+    # same evidence is already counted by COMPANY_SPECIFIC_EVENT, and firing both would
+    # score one fact twice — which is how nearly every article became HIGH.
+    from_reported_news = any(e.source == "news" for e in event.evidence)
+
+    if event.event_type in MATERIAL_EVENT_TYPES and not from_reported_news:
         reasons.append(
             _reason("MATERIAL_EVENT_TYPE", f"{event.event_type} is a material disclosure category.")
         )
-    elif event.event_type in ROUTINE_EVENT_TYPES:
+    elif event.event_type in ROUTINE_EVENT_TYPES and not from_reported_news:
         reasons.append(
             _reason("ROUTINE_EVENT_TYPE", f"{event.event_type} is routine for a listed company.")
         )
@@ -81,6 +95,7 @@ def assess(
         )
 
     reasons.extend(_market_reasons(event, observation, coverage))
+    reasons.extend(_news_reasons(corroboration, extraction, link, observation))
 
     missing = {r.source for r in coverage.missing}
     if "market" in missing and observation is None:
@@ -124,6 +139,77 @@ def assess(
         assessed_at=datetime.now(UTC),
         score=score,
     )
+
+
+def _news_reasons(
+    corroboration: Corroboration | None,
+    extraction: Extraction | None,
+    link: LinkDecision | None,
+    observation: MarketObservation | None,
+) -> list[ReasonCode]:
+    """What reported evidence contributes, and what it fails to.
+
+    Corroboration counts independent publishers, never articles (D13) — syndication
+    must not manufacture confidence.
+    """
+    reasons: list[ReasonCode] = []
+    if extraction is None:
+        return reasons
+
+    reasons.append(
+        _reason(
+            "COMPANY_SPECIFIC_EVENT",
+            f"{extraction.event.event_type} concerning this company specifically.",
+        )
+    )
+
+    if extraction.event.is_speculative:
+        reasons.append(
+            _reason(
+                "SPECULATIVE_REPORT",
+                "Reported as unconfirmed — talks, plans, or unnamed sources.",
+            )
+        )
+
+    if extraction.dropped:
+        reasons.append(
+            _reason(
+                "UNSUPPORTED_FIELDS_DROPPED",
+                f"The source did not support: {', '.join(extraction.dropped)}. Dropped.",
+            )
+        )
+
+    if corroboration is not None:
+        if corroboration.independent_source_count >= 2:
+            reasons.append(
+                _reason(
+                    "INDEPENDENT_CORROBORATION",
+                    f"{corroboration.summary} — counted by publisher, not by article.",
+                )
+            )
+        elif corroboration.article_count >= 1 and not corroboration.has_authoritative:
+            reasons.append(
+                _reason(
+                    "SINGLE_SOURCE_ONLY",
+                    f"{corroboration.summary}. Repetition would not make this stronger.",
+                )
+            )
+
+    # Market and news pointing the same way is worth more than either alone — stated as
+    # coincidence, never as cause (VISION.md §13).
+    if observation is not None and observation.is_unusual and not observation.is_mechanical:
+        reasons.append(
+            _reason(
+                "NEWS_COINCIDES_WITH_MOVE",
+                f"The shares moved unusually ({observation.return_pct:+.1f}%) over the same "
+                "period. Reported together as context, not as cause.",
+            )
+        )
+
+    if link is not None and link.outcome is LinkOutcome.AMBIGUOUS:
+        reasons.append(_reason("POSSIBLY_RELATED_EVENT", link.reason))
+
+    return reasons
 
 
 def _explains_itself(event: Event, reasons: list[ReasonCode]) -> bool:

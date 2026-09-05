@@ -65,6 +65,11 @@ _MIGRATIONS: tuple[str, ...] = (
     );
     CREATE INDEX idx_runs_source_started ON ingest_runs (source, started_at DESC);
     """,
+    """
+    ALTER TABLE assessments ADD COLUMN extraction TEXT;
+    ALTER TABLE assessments ADD COLUMN link_state TEXT;
+    CREATE INDEX idx_assessments_link ON assessments (security_symbol, event_type, occurred_at DESC);
+    """,
 )
 
 
@@ -89,8 +94,17 @@ class SqliteAssessmentStore:
                 connection.executescript(statements)
                 connection.execute(f"PRAGMA user_version = {version}")
 
-    def save(self, assessment: Assessment) -> None:
-        """Persist one verdict, replacing any earlier one for the same event."""
+    def save(
+        self,
+        assessment: Assessment,
+        extraction: dict[str, object] | None = None,
+        link_state: str | None = None,
+    ) -> None:
+        """Persist one verdict, replacing any earlier one for the same event.
+
+        ``extraction`` is kept so a later article can be compared against this event's
+        structured attributes rather than only its headline (D12).
+        """
         event = assessment.event
         with self._connect() as connection:
             connection.execute(
@@ -98,8 +112,8 @@ class SqliteAssessmentStore:
                 INSERT INTO assessments (
                     event_id, security_symbol, company_name, event_type, description,
                     occurred_at, attention, confidence, score, scoring_version,
-                    assessed_at, reasons, coverage, evidence
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    assessed_at, reasons, coverage, evidence, extraction, link_state
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(event_id) DO UPDATE SET
                     attention=excluded.attention,
                     confidence=excluded.confidence,
@@ -108,7 +122,9 @@ class SqliteAssessmentStore:
                     assessed_at=excluded.assessed_at,
                     reasons=excluded.reasons,
                     coverage=excluded.coverage,
-                    evidence=excluded.evidence
+                    evidence=excluded.evidence,
+                    extraction=excluded.extraction,
+                    link_state=excluded.link_state
                 """,
                 (
                     event.event_id,
@@ -125,6 +141,8 @@ class SqliteAssessmentStore:
                     json.dumps([_reason_row(r) for r in assessment.reasons]),
                     json.dumps([_coverage_row(c) for c in assessment.coverage.records]),
                     json.dumps([_evidence_row(e) for e in event.evidence]),
+                    None if extraction is None else json.dumps(extraction),
+                    link_state,
                 ),
             )
 
@@ -157,6 +175,43 @@ class SqliteAssessmentStore:
                 (source,),
             ).fetchone()
         return None if row is None else _to_run(row)
+
+    def candidates(
+        self, symbol: str, event_type: str, since: datetime
+    ) -> list[tuple[Assessment, dict[str, object] | None]]:
+        """Events that could be the same occurrence — the bucket, not the identity.
+
+        Deliberately generous: company, type and window only. Narrowing here would hide
+        candidates from the comparison that actually decides (D12).
+        """
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                """
+                SELECT * FROM assessments
+                WHERE security_symbol = ? AND event_type = ? AND occurred_at >= ?
+                ORDER BY occurred_at DESC LIMIT 25
+                """,
+                (symbol, event_type, since.isoformat()),
+            ).fetchall()
+        out: list[tuple[Assessment, dict[str, object] | None]] = []
+        for row in rows:
+            raw = row["extraction"]
+            out.append((_to_assessment(row), json.loads(raw) if raw else None))
+        return out
+
+    def get(self, event_id: str) -> Assessment | None:
+        """One event by id, by primary key.
+
+        Linking needs the event it is merging into regardless of how old it is. Scanning
+        a recent window instead would silently miss older events and overwrite them.
+        """
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                "SELECT * FROM assessments WHERE event_id = ?", (event_id,)
+            ).fetchone()
+        return None if row is None else _to_assessment(row)
 
     def recent(self, limit: int = 50) -> list[Assessment]:
         """Most recently disclosed first."""
@@ -220,6 +275,10 @@ def _to_run(row: sqlite3.Row) -> IngestRun:
         coverage=_to_coverage(row["coverage"]),
         assessed_count=row["assessed_count"],
     )
+
+
+def link_state_of(row: sqlite3.Row) -> str | None:
+    return row["link_state"]
 
 
 def _to_assessment(row: sqlite3.Row) -> Assessment:

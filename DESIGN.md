@@ -6,9 +6,9 @@ This document records the architectural decisions behind the Smart Market Watchl
 
 It is not an implementation spec. Nothing here should be recoverable by reading the code; everything here should be hard to recover from the code alone.
 
-**Status: frozen, with D20–D22 appended after Step 0 and D23 after Step 1.** The initial design was frozen before implementation. D20–D22 were appended after Step 0, and D23 after Step 1, each time because implementation exposed a boundary the original design left unresolved. These are recorded design decisions resulting from the review process, not silent changes to the frozen architecture.
+**Status: frozen, with D20–D22 appended after Step 0, D23 after Step 1, and D24 at the Step 2 handoff.** The initial design was frozen before implementation. D20–D22 were appended after Step 0 and D23 after Step 1 because implementation exposed boundaries the original design left unresolved. D24 was appended from the Step 2 brief because it made an unresolved extraction boundary explicit. These are recorded design decisions, not silent changes to the frozen architecture.
 
-The freeze means implementation must not silently redefine architecture. It does not mean implementation can never expose a missing decision. D1–D19 are unchanged and unrenumbered.
+The freeze means implementation must not silently redefine architecture. It does not mean a missing boundary must remain missing once discovered. D1–D19 are unchanged and unrenumbered.
 
 Every decision below is judged against [`VISION.md`](VISION.md). Where a decision is driven by a specific vision section, it says so.
 
@@ -430,8 +430,9 @@ E and F are the pair that matters most: together they show the system distinguis
 
 ---
 
-*The decisions below were appended after Step 0. Each records a boundary the original
-design left unresolved rather than a reversal of anything above it.*
+*D20–D23 were appended after their respective implementation steps exposed boundaries
+the original design left unresolved. D24 was appended from the Step 2 handoff brief.
+None reverses a decision above it.*
 
 ### D20 — Run-level coverage is independent of assessments
 
@@ -475,6 +476,18 @@ design left unresolved rather than a reversal of anything above it.*
   - **C (chosen)** — computed evidence, existing event and assessment path.
 - **Consequences:** a calm security produces no event at all, which is *not* a verdict of "no meaningful change" — that per-company statement is still owed by the review page in step 4, and the distinction is now written down so it is not mistaken for one. A corporate action produces a note rather than an alarm (scenario G), and an unexplained move produces a `NO_COMPANY_EVENT_DETECTED` reason code rather than a manufactured cause (scenario A).
 
+### D24 — Extraction is evidence-grounded, and partiality narrows claims
+
+- **Decision:** A model extraction is an evidence-derived claim, not an admissible fact merely because it matches a schema. Every material field used for identity, relevance, corroboration, scoring or explanation must remain traceable to the evidence record that supports it. Unsupported values remain explicitly unknown; speculation remains speculation. A valid partial extraction is retained with only its supported fields, while malformed output is rejected before domain use.
+- **Why:** D5 bounded the model's role and required schema validation, but left two questions unresolved: whether schema-valid invention could enter the domain, and whether one absent field invalidates everything the article did support. Accepting the whole object trusts the model too much; rejecting the whole object discards real evidence and makes model brittleness look like source absence. VISION §§12–15 require confidence, provenance and causal restraint to survive extraction rather than be reconstructed later.
+- **Options:**
+  - **A (simplest)** — accept any schema-valid extraction as a complete candidate. **Rejected:** a type-correct counterparty, value, date or causal relationship can still be unsupported, and downstream deterministic logic would then make precise decisions from an invented premise.
+  - **B** — reject any extraction containing an unknown or missing material field. **Rejected:** real reporting is routinely incomplete; this would erase supported facts and turn uncertainty into silence.
+  - **C (chosen)** — validate structure, preserve supported partial fields and explicit unknowns, retain extraction provenance, and constrain every downstream claim to what the surviving fields support.
+- **Acquisition and interpretation are distinct health dimensions.** If news was fetched but extraction is unavailable, the evidence remains stored and news acquisition is not falsely reported as failed. The affected evaluation is nevertheless degraded because the system could not safely interpret that evidence. A failed model call produces neither a fabricated event nor a crash; it produces persisted evidence plus an explicit evaluation gap.
+- **Causation follows the same rule.** Temporal proximity may support co-occurrence language — *"during the same period"* or *"may be relevant"* — but never a causal assertion unless the evidence directly establishes it. The model may render this distinction; it may not promote correlation into cause.
+- **Consequences:** extraction provenance includes the evidence references and the model, prompt, schema and extraction versions needed to reproduce or invalidate the result. Downstream modules must tolerate partial candidates and explicit unknowns. The system can show less when evidence is incomplete, but it cannot silently fill the gaps. Exact text-span annotation and a general claim graph are not required for this version; traceability to the supporting evidence record is the deliberately smaller contract.
+
 ---
 
 ## Not doing
@@ -512,29 +525,27 @@ Four resolutions that were listed here have been folded into the decisions above
 
 ## Next
 
-Read this against `VISION.md` and challenge any decision where the rejected option looks better — D4 (scoring model), D7 (explicit completion), D12 (event identity) and D16 (lifecycle scope) are the four where reasonable people will disagree, and the four that most shape the build.
+Steps 0 and 1 are complete. The next reader should implement Step 2 against D5, D12, D13, D15, D20, D21 and D24 without reopening the architecture.
 
-### Step 0 — Spike the authoritative disclosure path, end to end, including UI
+### Step 2 — Prove real news as meaningful change
 
-Before anything else, and before the schema settles. The HIGH-confidence provenance tier depends on having *an* authoritative disclosure source, and the candidate endpoints are undocumented and defensive. Discovering on day three that they are blocked or unusable would cost the tier and the C scenario with it.
+The first acceptance boundary is one real article travelling through the complete existing path: source → evidence → validated extraction → subject resolution → event identity → provenance and corroboration → Meaningful Change Engine → persistence → API → the existing UI. It must be rendered before coverage broadens. This is the same thin-slice discipline that exposed D20–D23; it prevents individually plausible backend pieces from accumulating without proving that their contracts compose.
 
-**The success criterion is not "the NSE API works."** It is: **one authoritative disclosure travels the full path** — external source → adapter → raw evidence → normalization → event candidate → provenance preserved → engine → persisted assessment → **rendered in the UI.**
+Once that slice works, a compact set of roughly twenty real articles should challenge semantic invariants rather than exact wording: correct subject, no invented entities or figures, preserved speculation and evidence references, multi-company and incidental mentions, syndicated coverage, follow-ups, and separate same-day events. Extraction failures that would poison identity or evaluation are corrected before more sophisticated linking is added.
 
-The UI is part of Step 0 and it is meant to be ugly: enough to display company, event, attention, confidence, reason codes, coverage and source, and nothing more. It stays ugly through Steps 1–5. The reason is not enthusiasm for frontend work — it is that **a backend model can look elegant in isolation and turn out awkward to communicate**, and the reason-code ledger, the coverage states and the confidence axis are exactly the kind of structure that reveals that only when something tries to render it. Finding that out on day three is expensive; finding it out in Step 0 is free.
+Step 2 is complete only when the system demonstrates all of the following through the shared domain path:
 
-If NSE proves unreliable, the adapter contract stands and another legitimate authoritative source is substituted behind it. **No domain logic may be shaped by NSE-specific response structures** — that is what makes the substitution a swap rather than a rewrite.
+- several publishers covering one occurrence produce one event with multiple evidence records;
+- two distinct same-day events for one company remain separate;
+- known syndicated copies do not manufacture independent corroboration;
+- malformed or unavailable extraction leaves evidence intact and visibly degrades evaluation;
+- a failed or empty news run records current coverage rather than inheriting old health;
+- an unexplained market move is surfaced without invented causation;
+- disclosure, news and market evidence can strengthen one assessment without creating duplicate alerts; and
+- attention, confidence, coverage and article count remain separate quantities.
 
-### Then, horizontal depth
+The UI remains an inspection surface during this step. It needs to expose the event, reason-code ledger, market context, coverage, provenance, article count, independent-source count and ambiguous-link state well enough to verify the decisions above; visual redesign remains deferred.
 
-**Thin vertical slice first, then horizontal depth.** Step 0 is the spine; Steps 1–5 thicken it; Step 6 turns an interface that already works into one worth showing.
+### After Step 2
 
-1. **Skeleton and truth.** Schema and migrations, market adapter, deterministic observations with corporate-action adjustment ordered correctly (D14), curated context for the demo set. Demoable: honest price behaviour against per-security baselines — scenarios A and G.
-2. **Evidence and events.** News adapter alongside the spiked disclosure adapter, coverage ledger, LLM extraction with schema validation, event identity with three outcomes (D12). Demoable: deduplicated events with provenance — scenario D.
-3. **The engine.** Relevance, corroboration, significance, attention as reason codes; confidence as a separate axis; coverage constraining what may be concluded. Demoable: ranked attention with a working "why am I seeing this?" — scenarios B, C and H. **This is the point at which the product exists.**
-4. **User state.** Auth, watchlists, checkpoints, the frozen review window, monotonic idempotent completion. Demoable: cross-device "since you last checked" with two real accounts.
-5. **Lifecycle and summaries.** State transitions with STALE-over-RESOLVED and event-type decay policy, persisted summaries with provenance. Demoable: scenarios E and F — the pair that carries the originality argument.
-6. **Frontend.** Astro shell, islands where interaction demands, coverage and freshness states, the explainability path (J4) — replacing the ugly Step 0 surface, not building from nothing.
-
-Seeded fixtures (D18) and the calibration fixture set (D4) are built alongside from step 2 onward, entering at the evidence boundary — not saved for the end, or they will not have exercised the pipeline they are meant to insure.
-
-Steps 1–4 are the product. Step 5 is what makes it original. Step 6 is what makes it polished — and it is the one to cut into, not the engine, if time runs short. Because of Step 0, cutting into it degrades the presentation rather than removing the interface.
+Continue with user state, lifecycle and persisted summaries, then presentation polish, following the existing decisions and scenarios. Seeded fixtures (D18) and the calibration set (D4) continue to enter at the evidence boundary so they exercise the same path as live data.

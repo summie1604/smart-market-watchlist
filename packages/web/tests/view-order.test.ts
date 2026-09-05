@@ -24,6 +24,12 @@ function stub(
     scoring_version: "test",
     reasons: [],
     coverage: { complete: true, note: "", records: [] },
+    corroboration: {
+      article_count: 1,
+      independent_source_count: 1,
+      summary: "1 article · 1 independent source",
+      has_authoritative: false,
+    },
     evidence: [],
   };
 }

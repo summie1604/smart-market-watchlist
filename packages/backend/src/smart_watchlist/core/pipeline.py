@@ -8,11 +8,15 @@ demo data a genuine test of the pipeline rather than a parallel fake (DESIGN.md 
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from .context import BROAD_INDEX, context_for, curated_symbols
+from .corroboration import assess_corroboration
 from .engine import assess
+from .extraction import ExtractedEvent, Extraction, validate
+from .linking import LINK_WINDOW, LinkOutcome, decide_link
 from .market import observe
 from .models import Coverage, CoverageRecord, CoverageStatus, Event, IngestRun
 from .normalize import from_observation, to_candidate
@@ -20,9 +24,14 @@ from .normalize import from_observation, to_candidate
 if TYPE_CHECKING:
     from .market import MarketObservation
     from .models import Assessment, Evidence
-    from .ports import AssessmentStore, DisclosureSource, MarketSource
+    from .ports import AssessmentStore, DisclosureSource, Extractor, MarketSource, NewsSource
 
-__all__ = ["NOT_BUILT_SOURCES", "run_disclosure_pipeline", "run_market_pipeline"]
+__all__ = [
+    "NOT_BUILT_SOURCES",
+    "run_disclosure_pipeline",
+    "run_market_pipeline",
+    "run_news_pipeline",
+]
 
 NOT_BUILT_SOURCES = ("news",)
 """Source families the design calls for that this step has not built.
@@ -238,3 +247,196 @@ def _observe_disclosed(
         if found is not None:
             observations[symbol] = found
     return observations, coverage
+
+
+def run_news_pipeline(
+    source: NewsSource,
+    extractor: Extractor,
+    store: AssessmentStore,
+    market: MarketSource | None = None,
+    fallback: Extractor | None = None,
+) -> tuple[IngestRun, list[Assessment]]:
+    """News to assessed events: extract, validate, link, corroborate, score.
+
+    The order matters and mirrors the product goal. Extraction proposes; validation
+    grounds it against the source; linking decides whether this is a new occurrence or
+    another report of one we hold; corroboration counts independent publishers rather
+    than articles; only then does the engine score it.
+
+    ``fallback`` runs when the primary extractor returns nothing — normally the rule
+    extractor behind the model, so a model outage degrades the reading rather than
+    stopping the flow of news into the domain (D5).
+    """
+    now = datetime.now(UTC)
+    companies = [(symbol, context_for(symbol, symbol).name) for symbol in curated_symbols()]
+    evidence_list, news_coverage = source.fetch(companies)
+
+    observations, market_coverage = _observe_disclosed(market, evidence_list, now)
+    disclosure_gap = CoverageRecord(
+        source="nse-disclosures",
+        status=CoverageStatus.UNAVAILABLE,
+        observed_at=now,
+        detail="Disclosures were not consulted by this news run.",
+    )
+    coverage = Coverage(records=(news_coverage, market_coverage, disclosure_gap))
+
+    assessments: list[Assessment] = []
+    for evidence in evidence_list:
+        assessment = _assess_article(
+            evidence, extractor, fallback, coverage, observations, store, now
+        )
+        if assessment is not None:
+            assessments.append(assessment)
+
+    run = IngestRun(
+        run_id=f"{source.name}:{now.isoformat()}",
+        source=source.name,
+        started_at=now,
+        coverage=coverage,
+        assessed_count=len(assessments),
+    )
+    store.save_run(run)
+    return run, assessments
+
+
+def _assess_article(
+    evidence: Evidence,
+    extractor: Extractor,
+    fallback: Extractor | None,
+    coverage: Coverage,
+    observations: dict[str, MarketObservation],
+    store: AssessmentStore,
+    now: datetime,
+) -> Assessment | None:
+    """One article, all the way through. Returns ``None`` when nothing survives."""
+    degraded = False
+    proposal = extractor.extract(evidence)
+    if proposal is None and fallback is not None:
+        proposal = fallback.extract(evidence)
+        degraded = proposal is not None
+    if proposal is None:
+        return None  # the article stays stored as evidence; it yields no event
+
+    used = fallback.name if degraded and fallback is not None else extractor.name
+    extraction, refusal = validate(proposal, evidence, used)
+    if extraction is None or refusal is not None:
+        return None  # not about this company, or too thin to be anything
+
+    decision = decide_link(
+        extraction.event,
+        _link_candidates(store, evidence, extraction.event, now),
+    )
+
+    if decision.outcome is LinkOutcome.LINK and decision.event_id is not None:
+        event = _merge_into(store, decision.event_id, evidence, extraction.event)
+    else:
+        event = Event(
+            event_id=_event_id(evidence),
+            security_symbol=evidence.security_symbol,
+            company_name=extraction.event.subject_company,
+            event_type=extraction.event.event_type,
+            description=extraction.event.description,
+            occurred_at=extraction.event.occurred_at or evidence.published_at,
+            evidence=(evidence,),
+        )
+
+    assessment = assess(
+        event,
+        coverage,
+        observations.get(evidence.security_symbol),
+        corroboration=assess_corroboration(event.evidence),
+        extraction=extraction,
+        link=decision,
+    )
+    store.save(
+        assessment, extraction=_extraction_row(extraction), link_state=decision.outcome.value
+    )
+    return assessment
+
+
+def _link_candidates(
+    store: AssessmentStore, evidence: Evidence, proposal: ExtractedEvent, now: datetime
+) -> list[tuple[Event, ExtractedEvent | None]]:
+    since = now - LINK_WINDOW
+    rows = store.candidates(evidence.security_symbol, proposal.event_type, since)
+    return [(a.event, _extraction_from_row(raw)) for a, raw in rows]
+
+
+def _merge_into(
+    store: AssessmentStore, event_id: str, evidence: Evidence, proposal: ExtractedEvent
+) -> Event:
+    """Attach this article to the event it continues.
+
+    One event, several evidence records — which is what makes article count and event
+    count different numbers, and why five reports of one story are not five alerts.
+    """
+    existing = store.get(event_id)
+    if existing is None:
+        # The link target could not be read back. Reusing its id would overwrite it with
+        # a single evidence record and destroy the provenance it had accumulated, so this
+        # becomes a new event instead — a duplicate, which is the survivable error (D12).
+        return Event(
+            event_id=_event_id(evidence),
+            security_symbol=evidence.security_symbol,
+            company_name=proposal.subject_company,
+            event_type=proposal.event_type,
+            description=proposal.description,
+            occurred_at=evidence.published_at,
+            evidence=(evidence,),
+        )
+    already = {e.source_ref for e in existing.event.evidence}
+    merged = (
+        existing.event.evidence
+        if evidence.source_ref in already
+        else (*existing.event.evidence, evidence)
+    )
+    return replace(existing.event, evidence=merged)
+
+
+def _extraction_row(extraction: Extraction) -> dict[str, object]:
+    event = extraction.event
+    return {
+        "subject_company": event.subject_company,
+        "event_type": event.event_type,
+        "description": event.description,
+        "counterparties": list(event.counterparties),
+        "geographies": list(event.geographies),
+        "products": list(event.products),
+        "industries": list(event.industries),
+        "regulator": event.regulator,
+        "contract_value": event.contract_value,
+        "is_speculative": event.is_speculative,
+        "extractor": extraction.extractor,
+        "dropped": list(extraction.dropped),
+    }
+
+
+def _extraction_from_row(raw: dict[str, object] | None) -> ExtractedEvent | None:
+    if raw is None:
+        return None
+    return ExtractedEvent(
+        subject_company=_text(raw.get("subject_company")),
+        event_type=_text(raw.get("event_type")),
+        description=_text(raw.get("description")),
+        counterparties=_string_tuple(raw.get("counterparties")),
+        geographies=_string_tuple(raw.get("geographies")),
+        products=_string_tuple(raw.get("products")),
+        industries=_string_tuple(raw.get("industries")),
+        regulator=_optional_text(raw.get("regulator")),
+        contract_value=_optional_text(raw.get("contract_value")),
+        is_speculative=bool(raw.get("is_speculative", False)),
+    )
+
+
+def _text(value: object) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _optional_text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _string_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    return tuple(v for v in value if isinstance(v, str))

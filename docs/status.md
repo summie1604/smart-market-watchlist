@@ -1,7 +1,8 @@
 # Status
 
-**Where the build is:** Step 1 complete and reviewed. Market data joins exchange
-disclosures. No news, no LLM in the loop, no user state.
+**Where the build is:** Step 2 complete and reviewed. News joins market data and
+exchange disclosures, with structured extraction, conservative event linking and
+independent-source corroboration. No user state yet.
 
 ## What Step 0 established
 
@@ -36,6 +37,39 @@ Proven, by running it — not by design intent:
 
 The Step 0 review gate was completed only after a blocking coverage defect was found
 and corrected — see the CHANGELOG entry.
+
+## What Step 2 established
+
+- **News travels the whole path**: Google News RSS → Evidence → extraction → grounding
+  validation → subject resolution → event linking → corroboration → the engine →
+  persistence → API → UI.
+- **Case D, live**: the Tata Motors/Iveco tender offer became **one event with 8
+  evidence records from 8 independent publishers**. Article count and event count are
+  different numbers.
+- **D13, live**: HDFC Bank coverage showed *4 articles · 3 independent sources* where
+  one publisher repeated, and *4 articles · 1 independent source* where a single outlet
+  posted four times — the latter scored LOW, not HIGH. Repetition did not manufacture
+  confidence.
+- **Grounding is deterministic, not prompted.** Any counterparty, product, geography,
+  regulator or monetary figure must appear in the source text or it is dropped and the
+  drop is recorded. A fabricated `contract_value` was caught this way during evaluation.
+- **Attention stayed scarce**: 14 HIGH out of 158 stored events (9%).
+- **The LLM is optional by construction.** With no credential the rule extractor runs and
+  the system keeps working with a plainly weaker reading (D5).
+
+## What Step 2 did *not* establish
+
+- **The LLM extraction path is unexercised.** No `ANTHROPIC_API_KEY` was available, so
+  the Claude adapter has only been tested against stubbed transports — malformed output,
+  non-JSON, and absent credentials all degrade correctly, but no real model response has
+  ever passed through it. **Extraction quality figures below describe the rule extractor
+  only.**
+- **Recall is modest.** On the 21-article fixture the rule extractor reaches 86% recall
+  at 100% precision; across 167 live articles it classifies 48%. Misses are silent.
+- **Syndication detection is incomplete** and always will be. Unknown syndication
+  inflates the independent-source count; nothing detects it.
+- **Event linking is lexical.** Two articles describing one story in very different
+  language will produce two events — the safe direction, but still wrong.
 
 ## What Step 1 established
 
@@ -98,13 +132,20 @@ and VISION.md §5 treats it as an honest finding rather than a weak one. This is
 calibration decision (D4) and belongs to a person with the fixture set, not to a silent
 weight change.
 
-## Next — step 2, evidence and events
+## Blocking, for a human
 
-News adapter, LLM extraction with schema validation, event identity with `LINK` /
-`CREATE_NEW` / `AMBIGUOUS` (D12). Demoable: scenario D. This also removes the
-`NO_NEWS_CORROBORATION` gap that still caps most verdicts.
+**No `ANTHROPIC_API_KEY` is configured.** The provider-isolated adapter is written and
+its failure paths are tested, but no real extraction has run. Supplying a key and
+re-running the evaluation is the single highest-value action available — it is the
+difference between 48% classification and what a model can do with the same articles.
 
-Then: the engine (B, C, H) → user state → lifecycle and summaries (E, F) → frontend. Scenario letters refer to the demo matrix in `DESIGN.md`.
+## Next — step 4, user state
+
+Auth, watchlists, review checkpoints, the frozen review window (D7, D8). This is what
+turns a list of assessments into *"what changed since you last looked"*, which is the
+product's actual claim.
+
+Then: lifecycle and summaries (E, F) → frontend. Scenario letters refer to the demo matrix in `DESIGN.md`.
 
 ## Known gaps in what exists
 

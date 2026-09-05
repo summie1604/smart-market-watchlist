@@ -155,6 +155,15 @@ function AssessmentCard({ assessment: a }: { assessment: Assessment }) {
         {a.company} · {a.event_type} · confidence {a.confidence} · score {a.score} ·
         rules {a.scoring_version}
       </p>
+      {/* One line instead of N duplicate headline cards. Independent sources are the
+          number that means something; the article count is shown beside it so the
+          difference is visible rather than implied. */}
+      <p style={{ margin: "0 0 0.5rem", fontSize: "0.9em" }}>
+        <strong>{a.corroboration.summary}</strong>
+        {a.corroboration.has_authoritative && " · includes an exchange filing"}
+        {a.corroboration.article_count > a.corroboration.independent_source_count &&
+          " · some reports share a newsroom or wire"}
+      </p>
       <p style={{ margin: "0 0 0.5rem" }}>{a.description}</p>
 
       <details open>
@@ -190,11 +199,17 @@ function AssessmentCard({ assessment: a }: { assessment: Assessment }) {
       </details>
 
       <details>
-        <summary>Evidence</summary>
+        <summary>
+          Evidence — {a.corroboration.article_count} report
+          {a.corroboration.article_count === 1 ? "" : "s"} from{" "}
+          {a.corroboration.independent_source_count} independent source
+          {a.corroboration.independent_source_count === 1 ? "" : "s"}
+        </summary>
         <ul>
           {a.evidence.map((e) => (
             <li key={e.ref}>
-              <code>{e.tier}</code> · {e.publisher} · {e.published_at} ·{" "}
+              <code>{e.tier}</code> · published by {e.publisher} · about{" "}
+              {e.subject_company} · {e.published_at} ·{" "}
               {e.url ? (
                 <a href={e.url} target="_blank" rel="noreferrer">
                   source document

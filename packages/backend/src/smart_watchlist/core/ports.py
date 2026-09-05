@@ -12,11 +12,13 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from datetime import datetime
 
+    from .extraction import ExtractedEvent
     from .market import Bar
     from .models import Assessment, CoverageRecord, Evidence, IngestRun
 
-__all__ = ["AssessmentStore", "DisclosureSource", "MarketSource"]
+__all__ = ["AssessmentStore", "DisclosureSource", "Extractor", "MarketSource", "NewsSource"]
 
 
 class DisclosureSource(Protocol):
@@ -45,6 +47,28 @@ class MarketSource(Protocol):
     def fetch(self, symbols: Sequence[str]) -> tuple[dict[str, list[Bar]], CoverageRecord]: ...
 
 
+class NewsSource(Protocol):
+    """Articles about companies, from publishers that are not the companies."""
+
+    name: str
+
+    def fetch(
+        self, companies: Sequence[tuple[str, str]]
+    ) -> tuple[list[Evidence], CoverageRecord]: ...
+
+
+class Extractor(Protocol):
+    """Proposes structure from evidence. Never asserts it.
+
+    Returns ``None`` when it cannot produce anything it can support — unavailable,
+    malformed, or simply unrecognisable. The caller degrades; it does not crash.
+    """
+
+    name: str
+
+    def extract(self, evidence: Evidence) -> ExtractedEvent | None: ...
+
+
 class AssessmentStore(Protocol):
     """Persistence for shared intelligence.
 
@@ -52,9 +76,24 @@ class AssessmentStore(Protocol):
     disclosure updates one row rather than creating a second event.
     """
 
-    def save(self, assessment: Assessment) -> None: ...
+    def save(
+        self,
+        assessment: Assessment,
+        extraction: dict[str, object] | None = None,
+        link_state: str | None = None,
+    ) -> None: ...
+
+    def get(self, event_id: str) -> Assessment | None: ...
+
+    """One event by id — linking must reach events of any age."""
 
     def recent(self, limit: int = 50) -> list[Assessment]: ...
+
+    def candidates(
+        self, symbol: str, event_type: str, since: datetime
+    ) -> list[tuple[Assessment, dict[str, object] | None]]: ...
+
+    """Events that could be the same occurrence — bucketed, not identified (D12)."""
 
     def save_run(self, run: IngestRun) -> None: ...
 

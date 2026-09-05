@@ -15,12 +15,20 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from ..adapters.claude_extractor import ClaudeExtractor
+from ..adapters.google_news import GoogleNewsSource
 from ..adapters.nse_disclosures import SOURCE_NAME, NseDisclosureSource
+from ..adapters.rule_extractor import RuleExtractor
 from ..adapters.sqlite_store import SqliteAssessmentStore
 from ..adapters.yfinance_market import YFinanceMarketSource
+from ..core.corroboration import assess_corroboration
 from ..core.engine import coverage_status_note
 from ..core.models import Attention
-from ..core.pipeline import run_disclosure_pipeline, run_market_pipeline
+from ..core.pipeline import (
+    run_disclosure_pipeline,
+    run_market_pipeline,
+    run_news_pipeline,
+)
 
 if TYPE_CHECKING:
     from ..core.models import Assessment, IngestRun
@@ -65,13 +73,20 @@ def ingest() -> dict[str, Any]:
     store = _store()
     market = YFinanceMarketSource()
     market_run, market_assessed = run_market_pipeline(market, store)
+    news_run, news_assessed = run_news_pipeline(
+        GoogleNewsSource(), ClaudeExtractor(), store, market=market, fallback=RuleExtractor()
+    )
     disclosure_run, disclosure_assessed = run_disclosure_pipeline(
         NseDisclosureSource(), store, market=market
     )
     return {
-        "assessed": len(market_assessed) + len(disclosure_assessed),
+        "assessed": len(market_assessed) + len(disclosure_assessed) + len(news_assessed),
         "source_health": _serialise_run(disclosure_run),
-        "runs": [_serialise_run(market_run), _serialise_run(disclosure_run)],
+        "runs": [
+            _serialise_run(market_run),
+            _serialise_run(news_run),
+            _serialise_run(disclosure_run),
+        ],
     }
 
 
@@ -134,6 +149,7 @@ def _serialise(assessment: Assessment) -> dict[str, Any]:
     must be able to tell a conclusion from an admission.
     """
     event = assessment.event
+    corroboration = assess_corroboration(event.evidence)
     return {
         "event_id": event.event_id,
         "symbol": event.security_symbol,
@@ -162,12 +178,19 @@ def _serialise(assessment: Assessment) -> dict[str, Any]:
                 for c in assessment.coverage.records
             ],
         },
+        "corroboration": {
+            "article_count": corroboration.article_count,
+            "independent_source_count": corroboration.independent_source_count,
+            "summary": corroboration.summary,
+            "has_authoritative": corroboration.has_authoritative,
+        },
         "evidence": [
             {
                 "source": e.source,
                 "ref": e.source_ref,
                 "tier": e.tier.name,
                 "publisher": e.publisher,
+                "subject_company": e.subject_company,
                 "published_at": e.published_at.isoformat(),
                 "url": e.url,
             }

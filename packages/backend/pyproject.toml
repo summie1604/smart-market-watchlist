@@ -42,6 +42,7 @@ ignore = ["E501"]  # line length handled by formatter
 
 [tool.pytest.ini_options]
 addopts = ["--cov=src"]
+pythonpath = ["tests"]
 
 [tool.ty.environment]
 python-version = "3.11"

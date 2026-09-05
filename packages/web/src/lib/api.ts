@@ -39,8 +39,17 @@ export interface EvidenceRef {
   ref: string;
   tier: string;
   publisher: string;
+  subject_company: string;
   published_at: string;
   url: string;
+}
+
+/** Independent publishers, not article count (D13). Repetition is not confirmation. */
+export interface Corroboration {
+  article_count: number;
+  independent_source_count: number;
+  summary: string;
+  has_authoritative: boolean;
 }
 
 export interface Assessment {
@@ -56,6 +65,7 @@ export interface Assessment {
   scoring_version: string;
   reasons: Reason[];
   coverage: Coverage;
+  corroboration: Corroboration;
   evidence: EvidenceRef[];
 }
 

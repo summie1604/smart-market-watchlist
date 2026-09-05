@@ -1,5 +1,54 @@
 # Changelog
 
+## 2026-09-05 — Step 2, news to meaningful change
+
+**What:** Real news reaches the engine. A Google News adapter produces Evidence that
+keeps publisher and subject company separate (D21); an extraction layer proposes
+structure and a deterministic grounding gate decides what may enter the domain;
+conservative event linking (D12) resolves LINK / CREATE_NEW / AMBIGUOUS from structured
+attributes rather than headlines alone; corroboration counts independent publishers
+rather than articles (D13); and the engine combines all of it with the market and
+disclosure evidence already there.
+
+**Why grounding is deterministic:** the anti-fabrication guarantee cannot depend on the
+model cooperating. Any counterparty, product, geography, regulator or monetary figure
+must appear in the source text or it is dropped and the drop recorded as a reason code.
+During evaluation this caught an invented `contract_value` that a prompt instruction
+alone would not have.
+
+**Live results:** the Tata Motors/Iveco tender offer became one event with 8 evidence
+records from 8 independent publishers. HDFC Bank coverage rendered as *4 articles · 3
+independent sources* where a publisher repeated, and *4 articles · 1 independent source*
+where one outlet posted four times — scored LOW, not HIGH. 14 HIGH out of 158 events.
+
+**Corrections found while building:** two articles about one material event scored it
+twice, because `MATERIAL_EVENT_TYPE` and `COMPANY_SPECIFIC_EVENT` both fired on the same
+evidence — 58 of 157 assessments were HIGH before the fix, 11 after. The review gate then
+found a silent evidence-loss bug: merging looked the link target up by scanning a recent
+window, so an older event was not found and its id was reused for a fresh single-evidence
+event, destroying the provenance and corroboration it had accumulated. Lookup is now by
+primary key, and an unreadable target creates a duplicate rather than overwriting.
+
+**Calibration from real data, not taste:** the link threshold was set by measuring real
+multi-publisher coverage. Two outlets reporting one Consob approval scored 0.57 Jaccard;
+two genuinely different same-day Tata Motors events scored 0.13. The threshold sits in
+that gap.
+
+**Known and stated:** no `ANTHROPIC_API_KEY` was available, so the Claude adapter has
+only been exercised against stubbed transports. All extraction quality figures describe
+the rule extractor: 86% recall at 100% precision on a 21-article fixture, 48%
+classification across 167 live articles.
+
+**Rejected:**
+
+- *Embeddings for event identity.* D12 forbids them for the MVP, and a merge the system
+  cannot explain is as bad as a ranking it cannot explain.
+- *Counting articles as corroboration.* Syndication would manufacture confidence.
+- *Trusting the model's own claim that it did not fabricate.* Prompting asks; the
+  grounding gate verifies.
+- *Blocking Step 2 on the missing API key.* The rule extractor is a real fallback, not a
+  mock, so the system works now and improves when a key appears.
+
 ## 2026-09-05 — Step 1, market observation
 
 **What:** The deterministic half of the engine. Daily bars from `yfinance` feed a pure
