@@ -6,7 +6,7 @@ This document records the architectural decisions behind the Smart Market Watchl
 
 It is not an implementation spec. Nothing here should be recoverable by reading the code; everything here should be hard to recover from the code alone.
 
-**Status: frozen, with D20–D22 appended after Step 0, D23 after Step 1, and D24–D25 at the Step 2 handoff.** The initial design was frozen before implementation. D20–D22 were appended after Step 0 and D23 after Step 1 because implementation exposed boundaries the original design left unresolved. D24 was appended from the Step 2 brief because it made an unresolved extraction boundary explicit. D25 records the chosen initial model provider after the planned Claude validation could not run without credentials. These are recorded design decisions, not silent changes to the frozen architecture.
+**Status: frozen, with D20–D22 appended after Step 0, D23 after Step 1, and D24–D25 at the Step 2 handoff.** The initial design was frozen before implementation. D20–D22 were appended after Step 0 and D23 after Step 1 because implementation exposed boundaries the original design left unresolved. D24 was appended from the Step 2 brief because it made an unresolved extraction boundary explicit. D25 records the chosen initial model provider after the planned Claude validation could not run without credentials; its model revision was corrected after live validation. These are recorded design decisions, not silent changes to the frozen architecture.
 
 The freeze means implementation must not silently redefine architecture. It does not mean a missing boundary must remain missing once discovered. D1–D19 are unchanged and unrenumbered.
 
@@ -493,7 +493,8 @@ Only D25 supersedes an earlier implementation choice: the provider named in D5.*
 
 ### D25 — Gemini is the initial model-backed extractor
 
-- **Decision:** Use Gemini 2.5 Flash through the Gemini Developer API as the single active model-backed extractor for Step 2. The rule extractor remains the deterministic fallback and evaluation baseline. This is a provider replacement behind D5's existing seam, not multi-provider orchestration.
+- **Decision:** Use the Gemini Developer API as the single active model-backed extractor for Step 2, with `gemini-3.6-flash` as the initial working model. The model revision is deployment configuration rather than a domain contract, because availability can change independently of the extraction boundary. The rule extractor remains the deterministic fallback and evaluation baseline. This is a provider replacement behind D5's existing seam, not multi-provider orchestration.
+- **Correction after live validation:** D25 originally named Gemini 2.5 Flash. Although the provider listed that model, `generateContent` returned 404 and identified it as unavailable to new users. The provider's named replacement, Gemini 3.6 Flash, completed real extraction calls. This corrects the model selection without changing the Gemini provider decision or any downstream contract.
 - **Why:** The Claude adapter could be exercised only through stubbed transports because no Anthropic credential was available, leaving the real model path unvalidated. Gemini offers a free developer tier and schema-constrained structured output, which covers the current extraction requirement without weakening D24's grounding gate or adding a paid dependency. The requirement bends to the available provider because provider identity is not core to the product; evidence-grounded extraction is.
 - **Options:**
   - **A (simplest)** — use the rule extractor alone. **Rejected:** it is precise and deterministic but currently misses too much real reporting, and it does not validate the model-assisted extraction boundary the design explicitly chose.

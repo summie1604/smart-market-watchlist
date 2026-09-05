@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-09-05 — Step 2 acceptance: the full 21-article evaluation
+
+**What:** The evaluation that was left at 11 of 21 calls is complete. All 21 fixture cases
+now have genuine Gemini outcomes: **14 true positives, 7 true negatives, 0 false
+positives, 0 false negatives** — 100% precision and recall, no unusable responses, no
+quota failures in the final set. Three grounding rejections removed a `contract_value` and
+two `regulator` fields the sources did not support.
+
+**How the remaining cases were run:** the ten quota-blocked cases were rerun, plus
+`leadership-change`, whose earlier `unusable-response` was caused by the output-truncation
+defect fixed after that run — its old outcome was no longer comparable. The free tier
+caps requests at 20 per model per day, so the 21 outcomes span three sibling flash models:
+17 on `gemini-3-flash-preview`, 2 on `gemini-flash-latest`, 2 on `gemini-3.1-flash-lite`.
+D25 treats the model revision as deployment configuration rather than a domain contract,
+which is what makes that acceptable — but these are Gemini-family figures, not one
+model's.
+
+**Defect found and fixed:** `leadership-change` returned `contract_value` as the literal
+string `"null"`. Grounding dropped it, but only because that word was absent from the
+source — `"unknown"` and `"none"` do appear in real articles, so the guarantee rested on
+an accident. Sentinel strings are now normalised to absence at the adapter boundary, with
+whole-value matching so real names like "Unknown Fields Ltd" survive. The affected case
+was not rerun: its outcome is unchanged, the field is dropped either way.
+
+**What the evaluation actually shows:** Gemini's advantage over the rule extractor is in
+what it refuses. It rejected the incidental mention, the sector-wide story, the analyst
+scenarios and the broker rating by understanding what each article concerned. It also
+extracted different counterparties for the two same-day Tata Motors events — Iveco and
+Vertelo — which is what gives conservative linking something conflicting to separate on.
+
+**Stated plainly:** the fixture is a designed test set of 21 hand-picked hard cases, not a
+random sample. 100% on it means the known failure modes are covered, not that extraction
+is solved. Live ingest produces ~160 articles per run against a 20-per-day budget, so most
+production articles still take the rule fallback.
+
 ## 2026-09-05 — Gemini as the model-backed extractor
 
 **What:** The model-backed extraction path runs. A Gemini adapter sits behind the

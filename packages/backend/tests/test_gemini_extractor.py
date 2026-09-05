@@ -193,3 +193,35 @@ def test_a_complete_but_unparseable_reply_stays_unusable() -> None:
 
     assert gemini.extract(evidence()) is None
     assert gemini.last_failure == "unusable-response"
+
+
+def test_sentinel_strings_become_absence_not_values() -> None:
+    """A model that means "nothing" sometimes says "null". That is not a value.
+
+    Observed live: `contract_value` came back as the literal string "null". Grounding
+    dropped it, but only because the word was absent from that source — "unknown" and
+    "none" do appear in real articles, so the guarantee cannot rest on that accident.
+    """
+    noisy = {
+        **GOOD,
+        "contract_value": "null",
+        "regulator": "N/A",
+        "counterparties": ["Iveco", "unknown", "  "],
+    }
+    result = extractor_returning(reply(noisy)).extract(evidence())
+
+    assert result is not None
+    assert result.contract_value is None
+    assert result.regulator is None
+    assert result.counterparties == ("Iveco",), "real values survive; sentinels do not"
+
+
+def test_a_real_value_that_merely_contains_a_sentinel_word_survives() -> None:
+    """The filter matches whole values, not substrings — "Unknown Fields Ltd" is a name."""
+    result = extractor_returning(
+        extractor_payload := reply({**GOOD, "counterparties": ["Unknown Fields Ltd"]})
+    ).extract(evidence())
+    assert extractor_payload
+
+    assert result is not None
+    assert result.counterparties == ("Unknown Fields Ltd",)

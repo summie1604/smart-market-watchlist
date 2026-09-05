@@ -59,22 +59,26 @@ and corrected — see the CHANGELOG entry.
 
 ## What Step 2 did *not* establish
 
-- **The model-backed path now runs, on a smaller sample than intended.** Gemini is wired
-  in behind the existing seam (D25) and real articles have travelled the full path. The
-  free tier caps requests at **20 per model per day**, so the 21-article evaluation
-  completed 11 calls before quota exhaustion. Figures below are honest about which
-  extractor and which model produced them.
-- **Gemini 2.5 Flash is not usable.** It still appears in the model listing but
-  `generateContent` returns 404 — "no longer available to new users". `DESIGN.md` D25
-  names 2.5 Flash; the code uses the provider's named replacement, and that discrepancy
-  is unresolved in the design document.
-- **Recall is modest for both extractors.** The rule extractor reaches 86% recall at
-  100% precision on the fixture and classifies 48% of 167 live articles. Gemini, on the
-  11 fixture articles that completed before quota, produced 5 true positives, 5 correct
-  rejections, 0 false positives and 1 unusable response — 83% recall at 100% precision
-  on that subset. Gemini's rejections are semantically grounded rather than keyword luck:
-  it correctly refused an article that merely mentions the company in someone else's
-  contract.
+- **The model-backed path runs and the full 21-article evaluation is complete.** All 21
+  fixture cases have genuine Gemini outcomes: **14 true positives, 7 true negatives, 0
+  false positives, 0 false negatives** — 100% precision and recall, no unusable
+  responses. Three grounding rejections removed fields the sources did not support.
+- **The 21 outcomes span three sibling flash models**, not one: 17 on
+  `gemini-3-flash-preview`, 2 on `gemini-flash-latest`, 2 on `gemini-3.1-flash-lite`. The
+  free tier caps requests at 20 per model per day, so no single model can complete a
+  21-call run in one day. D25 treats the model revision as deployment configuration
+  rather than a domain contract, which is what makes the split acceptable — but it means
+  these are Gemini-family figures, not one model's figures.
+- **The fixture is a designed test set, not a random sample.** 21 hand-picked articles
+  weighted toward hard cases. 100% on it means the known failure modes are covered, not
+  that extraction is solved.
+- **Gemini reaches 100% recall and precision on the fixture; the rule extractor reaches
+  86% / 100%.** The difference is in the rejections. Gemini refused the incidental
+  mention, the sector-wide story, the analyst-scenario piece and the broker rating by
+  understanding what each article was about; the rule extractor gets some of those right
+  only because no keyword matches. Gemini also separated the two same-day Tata Motors
+  events by extracting different counterparties — Iveco and Vertelo — which is what gives
+  event linking something conflicting to separate on.
 - **Syndication detection is incomplete** and always will be. Unknown syndication
   inflates the independent-source count; nothing detects it.
 - **Event linking is lexical.** Two articles describing one story in very different
@@ -141,16 +145,17 @@ and VISION.md §5 treats it as an honest finding rather than a weak one. This is
 calibration decision (D4) and belongs to a person with the fixture set, not to a silent
 weight change.
 
-## Blocking, for a human
+## Known limits, not blockers
 
-**The free-tier quota caps evaluation at 20 requests per model per day.** A full
-21-article run against one model is not possible on this key, so the Gemini metrics rest
-on 11 completed calls. A paid tier, or a day's wait per model, is what turns them into a
-number worth trusting.
+**The free-tier quota caps requests at 20 per model per day.** A single-model 21-call run
+is therefore impossible in one day, which is why the evaluation spans three sibling flash
+models. A paid tier would collapse this to one model and make the figures directly
+comparable across runs.
 
-**`DESIGN.md` D25 names Gemini 2.5 Flash, which the provider no longer serves to new
-keys.** The code uses the replacement model and records which model produced every
-result. The design document needs a one-line correction that only its owner should make.
+**Live throughput is unmeasured.** The evaluation is 21 articles. A full ingest across the
+curated universe produces ~160 articles per run, far beyond the daily free-tier budget, so
+production runs currently fall back to the rule extractor for most articles. The fallback
+is real and separately provenanced, but the model's live contribution is small.
 
 ## Next — step 4, user state
 

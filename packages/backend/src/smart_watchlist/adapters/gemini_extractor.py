@@ -275,11 +275,29 @@ def _first_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
+_SENTINELS = frozenset({"null", "none", "n/a", "na", "unknown", "not applicable", "-", "--"})
+"""Strings a model emits when it means absence.
+
+A schema that permits a string invites one, so "null" arrives as a value rather than as
+no value. Grounding would usually reject it, but only by accident of the word being
+absent from the source — and "unknown" or "none" appear in real articles. Normalising
+here keeps the invariant honest: unknown stays unknown, and absence is represented as
+absence rather than as a word that looks like data.
+"""
+
+
 def _optional(value: object) -> str | None:
-    return value.strip() if isinstance(value, str) and value.strip() else None
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return None if not text or text.lower() in _SENTINELS else text
 
 
 def _strings(value: object) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
-    return tuple(v.strip() for v in value if isinstance(v, str) and v.strip())
+    return tuple(
+        v.strip()
+        for v in value
+        if isinstance(v, str) and v.strip() and v.strip().lower() not in _SENTINELS
+    )
