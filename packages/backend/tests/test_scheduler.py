@@ -394,3 +394,35 @@ async def test_the_status_answers_the_operational_questions(tmp_path) -> None:
     assert status["cycles_completed"] == 1
     assert status["last_cycle"]["outcome"] == "succeeded"  # type: ignore[index]
     assert status["interval_seconds"]
+
+
+def test_every_historical_schema_version_upgrades_to_head(tmp_path) -> None:
+    """Migrations are append-only, and a stale database must reach head from anywhere.
+
+    Regression: a migration inserted mid-list replayed the wrong statement against every
+    database already past that index, so an existing store failed to open with
+    "duplicate column name".
+    """
+    import sqlite3
+
+    from smart_watchlist.adapters.sqlite_store import _MIGRATIONS
+
+    for stop in range(1, len(_MIGRATIONS) + 1):
+        path = tmp_path / f"v{stop}.db"
+        connection = sqlite3.connect(path)
+        for version, script in enumerate(_MIGRATIONS[:stop], start=1):
+            connection.executescript(script)
+            connection.execute(f"PRAGMA user_version = {version}")
+        connection.commit()
+        connection.close()
+
+        SqliteAssessmentStore(path)  # must upgrade without raising
+
+        connection = sqlite3.connect(path)
+        at_head = connection.execute("PRAGMA user_version").fetchone()[0]
+        tables = {
+            r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        connection.close()
+        assert at_head == len(_MIGRATIONS), f"v{stop} did not reach head"
+        assert "rejected_evidence" in tables

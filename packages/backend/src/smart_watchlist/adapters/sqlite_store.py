@@ -36,6 +36,8 @@ if TYPE_CHECKING:
 
 __all__ = ["SqliteAssessmentStore"]
 
+# Append-only. A migration inserted in the middle replays the wrong statement against
+# every database already past that index — a mistake this list made once.
 _MIGRATIONS: tuple[str, ...] = (
     """
     CREATE TABLE assessments (
@@ -67,15 +69,28 @@ _MIGRATIONS: tuple[str, ...] = (
     CREATE INDEX idx_runs_source_started ON ingest_runs (source, started_at DESC);
     """,
     """
+    ALTER TABLE assessments ADD COLUMN extraction TEXT;
+    ALTER TABLE assessments ADD COLUMN link_state TEXT;
+    CREATE INDEX idx_assessments_link ON assessments (security_symbol, event_type, occurred_at DESC);
+    """,
+    """
     ALTER TABLE ingest_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'COMPLETED';
     ALTER TABLE ingest_runs ADD COLUMN finished_at TEXT;
     ALTER TABLE ingest_runs ADD COLUMN detail TEXT NOT NULL DEFAULT '';
     CREATE INDEX idx_runs_status ON ingest_runs (status);
     """,
     """
-    ALTER TABLE assessments ADD COLUMN extraction TEXT;
-    ALTER TABLE assessments ADD COLUMN link_state TEXT;
-    CREATE INDEX idx_assessments_link ON assessments (security_symbol, event_type, occurred_at DESC);
+    CREATE TABLE rejected_evidence (
+        source_ref      TEXT NOT NULL,
+        source          TEXT NOT NULL,
+        security_symbol TEXT NOT NULL,
+        reason          TEXT NOT NULL,
+        extractor       TEXT NOT NULL,
+        recorded_at     TEXT NOT NULL,
+        evidence        TEXT NOT NULL,
+        PRIMARY KEY (source_ref, security_symbol)
+    );
+    CREATE INDEX idx_rejected_symbol ON rejected_evidence (security_symbol, recorded_at DESC);
     """,
 )
 
@@ -214,6 +229,71 @@ class SqliteAssessmentStore:
             raw = row["extraction"]
             out.append((_to_assessment(row), json.loads(raw) if raw else None))
         return out
+
+    def record_rejection(
+        self, evidence: Evidence, reason: str, extractor: str, recorded_at: datetime
+    ) -> None:
+        """Keep an article we refused to interpret, and say why.
+
+        Evidence preservation is a success, not a gap: we fetched it, we hold it, and we
+        declined to make a claim about it. Storing the refusal with its reason is what
+        makes "no event" auditable rather than indistinguishable from never having looked.
+        """
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO rejected_evidence
+                    (source_ref, source, security_symbol, reason, extractor, recorded_at, evidence)
+                VALUES (?,?,?,?,?,?,?)
+                ON CONFLICT(source_ref, security_symbol) DO UPDATE SET
+                    reason=excluded.reason,
+                    extractor=excluded.extractor,
+                    recorded_at=excluded.recorded_at
+                """,
+                (
+                    evidence.source_ref,
+                    evidence.source,
+                    evidence.security_symbol,
+                    reason,
+                    extractor,
+                    recorded_at.isoformat(),
+                    json.dumps(_evidence_row(evidence)),
+                ),
+            )
+
+    def rejections(self, symbol: str | None = None, limit: int = 50) -> list[dict[str, object]]:
+        """Refused articles, newest first. For audit, not for the review surface."""
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            if symbol is None:
+                rows = connection.execute(
+                    "SELECT * FROM rejected_evidence ORDER BY recorded_at DESC LIMIT ?", (limit,)
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM rejected_evidence WHERE security_symbol = ?
+                    ORDER BY recorded_at DESC LIMIT ?
+                    """,
+                    (symbol, limit),
+                ).fetchall()
+        return [
+            {
+                "source_ref": r["source_ref"],
+                "security_symbol": r["security_symbol"],
+                "reason": r["reason"],
+                "extractor": r["extractor"],
+                "recorded_at": r["recorded_at"],
+                "title": json.loads(r["evidence"]).get("title", ""),
+            }
+            for r in rows
+        ]
+
+    def delete_assessment(self, event_id: str) -> bool:
+        """Remove one derived assessment. Used only by correction, never by ingestion."""
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM assessments WHERE event_id = ?", (event_id,))
+            return cursor.rowcount > 0
 
     def fail_running_runs(self, source: str, detail: str, finished_at: datetime) -> int:
         """Mark this source's in-flight runs as failed.

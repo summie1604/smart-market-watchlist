@@ -109,4 +109,14 @@ class AssessmentStore(Protocol):
 
     def reap_interrupted_runs(self) -> int: ...
 
+    """Marks runs left RUNNING by a dead process as interrupted."""
+
+    def record_rejection(
+        self, evidence: Evidence, reason: str, extractor: str, recorded_at: datetime
+    ) -> None: ...
+
+    """Preserve an article we refused to interpret, with the reason."""
+
+    def delete_assessment(self, event_id: str) -> bool: ...
+
     """The most recent run for a source, which is what current source health means."""

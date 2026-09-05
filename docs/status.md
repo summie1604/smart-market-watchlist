@@ -59,14 +59,43 @@ and corrected — see the CHANGELOG entry.
   separately-provenanced rule extractor and the cycle still reports `succeeded`.
 - **Nothing external happens on page render.** The UI reads persisted intelligence only.
 
+## Fallback subject safety
+
+The rule, in one sentence: **a company must be named in the headline, inside the leading
+clause, in a subject position** — otherwise the fallback makes no claim.
+
+- Aliases are curated per company (canonical name, ticker, explicit short forms). Never
+  inferred from text.
+- Matching is on token boundaries, so "Relianceable Systems" is not Reliance.
+- Everything after the first `:`, `;`, `|` or spaced dash is commentary, so list and
+  roundup headlines cannot name a subject.
+- A name preceded by a counterparty preposition, or by a relationship word (supplier,
+  rival, peer, backed, unit), is the other party rather than the subject.
+- Body-only mentions are refused. A bounded rule cannot judge what a paragraph is about,
+  and declining is the honest response. Gemini handles those when it is available.
+- Refusals persist the evidence and the reason, so "no event" is auditable rather than
+  indistinguishable from never having looked.
+
+Measured live with the model unavailable: 119 events accepted, 411 articles refused —
+`subject-not-named-in-headline` 146, `no-recognisable-event-type` 150,
+`subject-named-outside-leading-clause` 42, `subject-named-as-counterparty` 36,
+`market-roundup` 36, `subject-named-as-a-relationship` 1.
+
+**Accepted residual risk:** short aliases such as "Reliance" are curated deliberately.
+Other listed companies share that word, so a headline about one of them could pass. The
+subject-position rules remove the common cases; the remainder is why short aliases are
+curated one at a time rather than generated.
+
+**Known limit:** correction reads the most recent 1000 assessments. Larger stores would
+need paging.
+
 ## What scheduled ingestion did *not* establish
 
-- **The rule fallback's precision is visible at scale.** With Gemini's daily quota spent,
-  most articles take the rule extractor, which cannot tell that an article is about a
-  *different* company. A live review surfaced "Goodluck India alters MoA and appoints new
-  Group CFO" under RELIANCE. Gemini rejects that class of article correctly; the fallback
-  has no mechanism to. This is the known Step 2 limitation, now more visible because
-  unattended ingestion runs far beyond the model's budget.
+- ~~**The rule fallback misattributes other companies' articles.**~~ **Closed** — the
+  fallback now grounds the subject deterministically in the headline. Retrieval context is
+  a hint, never proof (D21). Correcting the existing data withdrew **68 of 148**
+  rule-derived news assessments as unsupported attributions, which is the size the defect
+  had reached.
 - **No retry or backoff.** A failed family simply fails and waits for the next interval.
 - **Single process only.** The overlap guard is an in-process flag, which is correct for
   this deployment and insufficient for two.

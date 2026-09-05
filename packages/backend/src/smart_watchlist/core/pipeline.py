@@ -305,11 +305,22 @@ def _assess_article(
         proposal = fallback.extract(evidence)
         degraded = proposal is not None
     if proposal is None:
-        return None  # the article stays stored as evidence; it yields no event
+        # Nothing could be safely claimed about this article. That is an outcome worth
+        # keeping: the evidence and the reason are stored so a refusal is auditable rather
+        # than indistinguishable from never having fetched it.
+        refuser = fallback if fallback is not None else extractor
+        store.record_rejection(
+            evidence,
+            getattr(refuser, "last_rejection", None) or "no-extraction-available",
+            refuser.name,
+            now,
+        )
+        return None
 
     used = fallback.name if degraded and fallback is not None else extractor.name
     extraction, refusal = validate(proposal, evidence, used)
     if extraction is None or refusal is not None:
+        store.record_rejection(evidence, refusal or "validation-refused", used, now)
         return None  # not about this company, or too thin to be anything
 
     decision = decide_link(

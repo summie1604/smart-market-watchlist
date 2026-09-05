@@ -1,5 +1,50 @@
 # Changelog
 
+## 2026-09-05 — Fallback subject safety
+
+**What:** The deterministic rule fallback no longer attributes an article to a company
+merely because it arrived from that company's feed. Retrieval context is a hint about
+where we looked; it was never proof of who an article is about (D21).
+
+**The rule:** a company must be named in the headline, inside the leading clause, in a
+subject position. Aliases are curated per company — canonical name, ticker, explicit short
+forms — never inferred. Matching is token-bounded. Everything after the first `:`, `;`,
+`|` or spaced dash is commentary, so lists and roundups cannot name a subject. A name
+preceded by a counterparty preposition or a relationship word is the other party. Body-only
+mentions are refused: a bounded rule cannot judge what a paragraph is about, and declining
+is the honest answer where Gemini would read it properly.
+
+**Found live:** "Goodluck India alters MoA and appoints new Group CFO" was surfaced as a
+RELIANCE event after quota exhaustion forced the fallback. That exact article is now the
+first regression test, and it failed before the fix along with eleven others.
+
+**Scale of the defect:** correcting existing data withdrew **68 of 148** rule-derived news
+assessments as unsupported attributions — roughly half. The raw evidence and its provenance
+are preserved in a rejection record; only the claim was withdrawn. Ingest runs, coverage,
+accounts, watchlists and checkpoints were untouched.
+
+**Evidence preservation was a genuine gap**, not just a policy: evidence had only ever been
+stored inside assessments, so an article that produced no event left no trace. Refused
+articles now persist with their reason, which makes "no event" auditable rather than
+indistinguishable from never having fetched it.
+
+**Second defect, found while correcting:** a migration had been inserted mid-list rather
+than appended, so a database already past that index replayed the wrong statement and
+failed to open with "duplicate column name". Migrations are append-only; every historical
+version now has a tested upgrade path to head.
+
+**Health dimensions stay separate:** acquisition succeeded, interpretation declined. A
+refused article never marks the news source unavailable, and the run stays healthy.
+
+**Rejected:**
+
+- *Blacklisting Goodluck India, or special-casing RELIANCE.* The rule is general or it is
+  worthless.
+- *Trusting feed scope as identity.* That is the defect, restated.
+- *Fuzzy or semantic matching, embeddings, another model call.* The fallback exists for
+  when no model is available; it must be bounded and explainable.
+- *Suppressing all fallback output.* 119 real events still pass; recall was not the problem.
+
 ## 2026-09-05 — Scheduled background ingestion
 
 **What:** The system observes on its own. An in-process asyncio scheduler runs one cycle
