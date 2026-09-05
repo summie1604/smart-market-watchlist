@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-09-05 — Gemini as the model-backed extractor
+
+**What:** The model-backed extraction path runs. A Gemini adapter sits behind the
+existing provider-isolated interface (D25), reading its credential from a gitignored
+file through a loader that has no code path capable of printing it. Every result passes
+schema validation, the deterministic grounding gate and subject resolution before
+reaching the domain. The rule extractor remains the fallback and the evaluation
+baseline, with separate provenance persisted per assessment.
+
+**What the model actually did:** on the 11 fixture articles that completed before quota,
+5 true positives, 5 correct rejections, 0 false positives. Gemini rejected an article
+that only mentions the company inside someone else's contract — the hard case the rule
+extractor passed by luck. It also proposed a `contract_value` the source did not contain,
+and **grounding dropped it**, which is the gate doing on a real model exactly what it was
+built for.
+
+**Provider realities, recorded because they shaped the work:** Gemini 2.5 Flash is listed
+but returns 404 to new keys, so the provider's named replacement is used. The free tier
+allows 20 requests per model per day, which is why the evaluation is 11 calls rather than
+21, and why the model is configurable — an evaluation run must not consume the production
+model's budget.
+
+**Fixes found while building:**
+
+- Grounding rejected two-character values, so a correctly grounded `US` geography was
+  dropped. The token floor was wrong, not the check: matching is token-level, so short
+  tokens cannot match spuriously. Fabricated values are still rejected, and a test pins
+  both halves.
+- A truncated model reply parsed as garbage and was reported identically to a malformed
+  one. Gemini 3.x spends output budget on reasoning, so the budget was raised and
+  truncation is now a distinct, diagnosable failure.
+- The page claimed "No ingest has run. Nothing here has been looked at yet" while
+  displaying three assessments, because health was read from the disclosure source alone.
+  Health now covers every source family that has run — a banner contradicting the content
+  is exactly the misrepresentation this product exists to avoid.
+
+**Rejected:**
+
+- *Multi-provider orchestration.* D5 chose isolation, not a provider framework.
+- *Weakening grounding to raise recall.* The short-token fix removed a false negative; it
+  did not relax the guarantee.
+- *Reporting metrics from a model other than the one that ran.* The extractor name carries
+  provider, model and prompt version, so figures always name their source.
+
 ## 2026-09-05 — Step 2, news to meaningful change
 
 **What:** Real news reaches the engine. A Google News adapter produces Evidence that

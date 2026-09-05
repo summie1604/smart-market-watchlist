@@ -7,6 +7,7 @@ because the case that matters is the one where there are none.
 from __future__ import annotations
 
 import importlib
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -56,3 +57,44 @@ def test_assessments_arrive_in_canonical_order(client, monkeypatch) -> None:
     # A material disclosure for a curated company under full coverage outranks a
     # routine one; the API returns them in that order so the client need not decide.
     assert [a["attention"] for a in returned] == ["HIGH", "NO_MEANINGFUL_CHANGE"]
+
+
+def test_health_covers_every_source_family_that_has_run(client) -> None:
+    """The banner must not claim nothing was looked at while showing results.
+
+    Regression: health was read from the disclosure source alone, so a news-only run
+    rendered "No ingest has run" above three assessments produced by that very run.
+    """
+    import smart_watchlist.api.app as app_module
+    from smart_watchlist.core.models import Coverage, CoverageRecord, CoverageStatus, IngestRun
+
+    now = datetime.now(UTC)
+    store = app_module._store()
+    store.save_run(
+        IngestRun(
+            run_id="news:1",
+            source="news",
+            started_at=now,
+            coverage=Coverage(
+                records=(
+                    CoverageRecord(
+                        source="news", status=CoverageStatus.OK, observed_at=now, detail="ok"
+                    ),
+                )
+            ),
+            assessed_count=3,
+        )
+    )
+
+    body = client.get("/assessments").json()
+
+    assert body["source_health"] is not None, "a news run is a run"
+    assert body["source_health"]["healthy"] is True
+    assert any(r["source"] == "news" for r in body["runs"])
+
+
+def test_health_is_none_only_when_nothing_has_ever_run(client) -> None:
+    body = client.get("/assessments").json()
+
+    assert body["source_health"] is None
+    assert body["runs"] == []

@@ -24,3 +24,8 @@ packages/web/dist/
 
 # macOS
 .DS_Store
+
+# Credentials — never committed
+GEMINI.ENV
+*.ENV
+.env.*

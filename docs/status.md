@@ -59,13 +59,22 @@ and corrected — see the CHANGELOG entry.
 
 ## What Step 2 did *not* establish
 
-- **The LLM extraction path is unexercised.** No `ANTHROPIC_API_KEY` was available, so
-  the Claude adapter has only been tested against stubbed transports — malformed output,
-  non-JSON, and absent credentials all degrade correctly, but no real model response has
-  ever passed through it. **Extraction quality figures below describe the rule extractor
-  only.**
-- **Recall is modest.** On the 21-article fixture the rule extractor reaches 86% recall
-  at 100% precision; across 167 live articles it classifies 48%. Misses are silent.
+- **The model-backed path now runs, on a smaller sample than intended.** Gemini is wired
+  in behind the existing seam (D25) and real articles have travelled the full path. The
+  free tier caps requests at **20 per model per day**, so the 21-article evaluation
+  completed 11 calls before quota exhaustion. Figures below are honest about which
+  extractor and which model produced them.
+- **Gemini 2.5 Flash is not usable.** It still appears in the model listing but
+  `generateContent` returns 404 — "no longer available to new users". `DESIGN.md` D25
+  names 2.5 Flash; the code uses the provider's named replacement, and that discrepancy
+  is unresolved in the design document.
+- **Recall is modest for both extractors.** The rule extractor reaches 86% recall at
+  100% precision on the fixture and classifies 48% of 167 live articles. Gemini, on the
+  11 fixture articles that completed before quota, produced 5 true positives, 5 correct
+  rejections, 0 false positives and 1 unusable response — 83% recall at 100% precision
+  on that subset. Gemini's rejections are semantically grounded rather than keyword luck:
+  it correctly refused an article that merely mentions the company in someone else's
+  contract.
 - **Syndication detection is incomplete** and always will be. Unknown syndication
   inflates the independent-source count; nothing detects it.
 - **Event linking is lexical.** Two articles describing one story in very different
@@ -134,10 +143,14 @@ weight change.
 
 ## Blocking, for a human
 
-**No `ANTHROPIC_API_KEY` is configured.** The provider-isolated adapter is written and
-its failure paths are tested, but no real extraction has run. Supplying a key and
-re-running the evaluation is the single highest-value action available — it is the
-difference between 48% classification and what a model can do with the same articles.
+**The free-tier quota caps evaluation at 20 requests per model per day.** A full
+21-article run against one model is not possible on this key, so the Gemini metrics rest
+on 11 completed calls. A paid tier, or a day's wait per model, is what turns them into a
+number worth trusting.
+
+**`DESIGN.md` D25 names Gemini 2.5 Flash, which the provider no longer serves to new
+keys.** The code uses the replacement model and records which model produced every
+result. The design document needs a one-line correction that only its owner should make.
 
 ## Next — step 4, user state
 

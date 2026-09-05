@@ -3,19 +3,20 @@ import Base from "../layouts/Base.astro";
 import AssessmentList from "../components/AssessmentList";
 ---
 
-<Base title="Smart Market Watchlist — Step 0">
+<Base title="Smart Market Watchlist">
   <main style="max-width: 52rem; margin: 2rem auto; padding: 0 1rem; font-family: system-ui, sans-serif;">
     <h1>Smart Market Watchlist</h1>
     <p>
-      <strong>Step 0 — the disclosure spike.</strong> One authoritative source travelling
-      the whole path: exchange filing → adapter → evidence → normalization → event
-      candidate → provenance → the Meaningful Change Engine → persisted assessment →
-      this page.
+      <strong>Steps 0–2.</strong> Three source families travel one path: exchange
+      disclosures, market observations, and news → adapter → evidence → extraction →
+      grounding → event candidate → linking → corroboration → the Meaningful Change
+      Engine → persisted assessment → this page.
     </p>
     <p style="font-size: 0.9em;">
-      Deliberately unstyled. The market and news adapters do not exist yet, so most
-      verdicts read <em>unable to evaluate reliably</em> rather than <em>no meaningful
-      change</em> — the system declining to call silence a conclusion.
+      Deliberately unstyled. Corroboration counts independent publishers, not articles:
+      several reports of one story become one event, and repetition by a single outlet
+      does not become confirmation. No user state yet, so this is everything the system
+      knows rather than what changed since you last looked.
     </p>
     <hr />
     <AssessmentList client:load />

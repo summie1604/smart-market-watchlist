@@ -297,3 +297,34 @@ def test_linking_reaches_an_event_older_than_the_recent_window(tmp_path) -> None
 
     assert len(merged.evidence) == 3, "the two earlier reports must survive the merge"
     assert {e.publisher for e in merged.evidence} == {"Reuters", "Bloomberg", "Livemint"}
+
+
+def test_fallback_output_is_never_labelled_as_model_output(tmp_path) -> None:
+    """D25: fallback output must never be represented as Gemini output.
+
+    Provenance is what lets a stored assessment be evaluated against the extractor that
+    actually produced it. Mislabelling would make the model look better than it is.
+    """
+    import json
+    import sqlite3
+
+    from smart_watchlist.adapters.rule_extractor import EXTRACTOR_NAME as RULE_NAME
+
+    path = tmp_path / "p.db"
+    store = SqliteAssessmentStore(path)
+
+    run_news_pipeline(feed_source(), DeadExtractor(), store, fallback=RuleExtractor())
+
+    connection = sqlite3.connect(path)
+    connection.row_factory = sqlite3.Row
+    rows = connection.execute(
+        "SELECT extraction FROM assessments WHERE extraction IS NOT NULL"
+    ).fetchall()
+    connection.close()
+
+    assert rows, "the fallback should have produced a persisted extraction"
+    for row in rows:
+        extractor = json.loads(row["extraction"])["extractor"]
+        assert extractor == RULE_NAME
+        assert "google/" not in extractor
+        assert "gemini" not in extractor.lower()

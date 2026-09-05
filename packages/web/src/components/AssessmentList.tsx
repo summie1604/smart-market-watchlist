@@ -70,8 +70,8 @@ export default function AssessmentList() {
       ) : (
         <>
           <p>
-            <strong>{assessments.length} assessed disclosures</strong>, in the order the
-            engine ranked them.
+            <strong>{assessments.length} assessed events</strong> across disclosures,
+            market observations and news, in the order the engine ranked them.
           </p>
           {assessments.map((a) => (
             <AssessmentCard key={a.event_id} assessment={a} />
@@ -93,7 +93,8 @@ function SourceHealthBanner({ health }: { health: SourceHealth | null }) {
   if (health === null) {
     return (
       <p style={{ border: "1px solid #999", padding: "0.5rem" }}>
-        <strong>No ingest has run.</strong> Nothing here has been looked at yet.
+        <strong>No ingest has run.</strong> Nothing here has been looked at yet — which
+        is not a finding about the market.
       </p>
     );
   }
@@ -111,8 +112,8 @@ function SourceHealthBanner({ health }: { health: SourceHealth | null }) {
     >
       <strong>
         {health.healthy
-          ? `Sources healthy as of ${health.started_at}.`
-          : `Last ingest could not read ${health.source}.`}
+          ? `Sources healthy as of ${health.started_at}: ${health.source}.`
+          : `Last ingest could not read every source (${health.source}).`}
       </strong>
       {!health.healthy && (
         <p style={{ margin: "0.25rem 0" }}>

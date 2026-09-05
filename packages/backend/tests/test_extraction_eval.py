@@ -125,3 +125,60 @@ def test_recall_is_measured_and_reported_honestly() -> None:
     assert recall >= 0.3, (
         f"recall fell below the recorded floor: {len(found)}/{len(expected)} = {recall:.0%}"
     )
+
+
+def test_short_but_real_tokens_are_not_wrongly_rejected() -> None:
+    """ "US" appears in the headline; grounding must accept it.
+
+    Regression: a `len > 2` token filter discarded two-character values, so a correctly
+    grounded geography was dropped. Token-level matching makes short tokens safe.
+    """
+    from smart_watchlist.core.extraction import ExtractedEvent
+
+    article = Article(
+        label="short-token",
+        publisher="News On AIR",
+        symbol="RELIANCE",
+        company="Reliance Industries",
+        title="Trump announces $300 billion partnership with Reliance to build first major US refinery",
+    )
+    proposal = ExtractedEvent(
+        subject_company="Reliance Industries",
+        event_type="Agreements",
+        description="Partnership announced.",
+        geographies=("US",),
+    )
+
+    extraction, refusal = validate(proposal, as_evidence(article), "test")
+
+    assert refusal is None
+    assert extraction is not None
+    assert extraction.event.geographies == ("US",)
+    assert "geographies" not in extraction.dropped
+
+
+def test_a_fabricated_value_is_still_rejected_after_the_short_token_fix() -> None:
+    """The loosened floor must not loosen the guarantee."""
+    from smart_watchlist.core.extraction import ExtractedEvent
+
+    article = Article(
+        label="no-aramco",
+        publisher="Reuters",
+        symbol="RELIANCE",
+        company="Reliance Industries",
+        title="Reliance reports higher refining margins",
+    )
+    proposal = ExtractedEvent(
+        subject_company="Reliance Industries",
+        event_type="Agreements",
+        description="x",
+        counterparties=("Saudi Aramco",),
+        contract_value="Rs 5000 crore",
+    )
+
+    extraction, _ = validate(proposal, as_evidence(article), "test")
+
+    assert extraction is not None
+    assert extraction.event.counterparties == ()
+    assert extraction.event.contract_value is None
+    assert set(extraction.dropped) == {"counterparties", "contract_value"}

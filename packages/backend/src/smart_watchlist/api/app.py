@@ -16,10 +16,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ..adapters.claude_extractor import ClaudeExtractor
+from ..adapters.google_news import SOURCE_NAME as NEWS_SOURCE
 from ..adapters.google_news import GoogleNewsSource
-from ..adapters.nse_disclosures import SOURCE_NAME, NseDisclosureSource
+from ..adapters.nse_disclosures import SOURCE_NAME as DISCLOSURE_SOURCE
+from ..adapters.nse_disclosures import NseDisclosureSource
 from ..adapters.rule_extractor import RuleExtractor
 from ..adapters.sqlite_store import SqliteAssessmentStore
+from ..adapters.yfinance_market import SOURCE_NAME as MARKET_SOURCE
 from ..adapters.yfinance_market import YFinanceMarketSource
 from ..core.corroboration import assess_corroboration
 from ..core.engine import coverage_status_note
@@ -101,11 +104,41 @@ def assessments(limit: int = 50) -> dict[str, Any]:
     """
     store = _store()
     items = _rank(store.recent(limit))
-    latest = store.latest_run(SOURCE_NAME)
+
+    # Health is reported for every source family, not just disclosures. Reading one
+    # source and calling it "the" health let the page claim nothing had been looked at
+    # while it was displaying results from a source that had run.
+    runs = [store.latest_run(name) for name in SOURCE_FAMILIES]
+    present = [_serialise_run(r) for r in runs if r is not None]
     return {
         "count": len(items),
-        "source_health": None if latest is None else _serialise_run(latest),
+        "source_health": _overall_health(present),
+        "runs": present,
         "assessments": [_serialise(a) for a in items],
+    }
+
+
+SOURCE_FAMILIES = (DISCLOSURE_SOURCE, MARKET_SOURCE, NEWS_SOURCE)
+
+
+def _overall_health(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """One summary across the families that have actually run.
+
+    ``None`` means nothing has ever run — genuinely nothing looked at. A family that has
+    never run is absent from ``runs`` rather than counted as healthy, because absence of
+    a failure record is not evidence of success.
+    """
+    if not runs:
+        return None
+    unhealthy = [r for r in runs if not r["healthy"]]
+    records = [record for run in runs for record in run["records"]]
+    return {
+        "run_id": ",".join(str(r["run_id"]) for r in runs),
+        "source": ", ".join(str(r["source"]) for r in runs),
+        "started_at": max(str(r["started_at"]) for r in runs),
+        "assessed_count": sum(int(r["assessed_count"]) for r in runs),
+        "healthy": not unhealthy,
+        "records": records,
     }
 
 

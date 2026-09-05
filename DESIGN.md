@@ -6,7 +6,7 @@ This document records the architectural decisions behind the Smart Market Watchl
 
 It is not an implementation spec. Nothing here should be recoverable by reading the code; everything here should be hard to recover from the code alone.
 
-**Status: frozen, with D20–D22 appended after Step 0, D23 after Step 1, and D24 at the Step 2 handoff.** The initial design was frozen before implementation. D20–D22 were appended after Step 0 and D23 after Step 1 because implementation exposed boundaries the original design left unresolved. D24 was appended from the Step 2 brief because it made an unresolved extraction boundary explicit. These are recorded design decisions, not silent changes to the frozen architecture.
+**Status: frozen, with D20–D22 appended after Step 0, D23 after Step 1, and D24–D25 at the Step 2 handoff.** The initial design was frozen before implementation. D20–D22 were appended after Step 0 and D23 after Step 1 because implementation exposed boundaries the original design left unresolved. D24 was appended from the Step 2 brief because it made an unresolved extraction boundary explicit. D25 records the chosen initial model provider after the planned Claude validation could not run without credentials. These are recorded design decisions, not silent changes to the frozen architecture.
 
 The freeze means implementation must not silently redefine architecture. It does not mean a missing boundary must remain missing once discovered. D1–D19 are unchanged and unrenumbered.
 
@@ -88,7 +88,7 @@ Astro (static/server-rendered) + React islands
   - exposes: `explain(Assessment) -> Summary` with model, prompt version, schema version, source event ids, generation time, and validity state.
   - hands off: persisted `Summary` to review assembly. **Consumes reason codes; may not add, drop or strengthen a claim.**
 
-- **`llm`** — provider-neutral interface with a single Claude adapter behind it.
+- **`llm`** — provider-isolated interface with one active model adapter, initially Gemini (D25).
   - exposes: `extract(text, schema)`, `classify(...)`, `phrase(...)` — all returning validated structured output or a failure.
   - hands off: structured candidates to `normalize`, text to `summarize`. Nothing else in the system imports a provider SDK.
 
@@ -312,6 +312,9 @@ E and F are the pair that matters most: together they show the system distinguis
 - **Failure behaviour:** unavailable, rate-limited, slow or malformed output degrades rather than corrupts. Existing valid summaries continue to display with their own freshness. New evidence that cannot be safely interpreted is marked **pending evaluation** — never fabricated, never silently dropped. Basic watchlist and market function survive a total LLM outage.
 - **Consequences:** an interface to maintain, and a validation layer between model output and the domain. Structured extraction must be schema-validated before it is allowed in, which is where malformed output is caught rather than propagated.
 
+*D25 supersedes D5's initial choice of Claude as the sole adapter. It does not change
+the seam or the model's bounded role.*
+
 ### D6 — Summaries precomputed and persisted, never generated per page view
 
 - **Options:** **A** — generate at evaluation time, persist with provenance, serve to all readers. **B (simplest)** — generate on request.
@@ -431,8 +434,8 @@ E and F are the pair that matters most: together they show the system distinguis
 ---
 
 *D20–D23 were appended after their respective implementation steps exposed boundaries
-the original design left unresolved. D24 was appended from the Step 2 handoff brief.
-None reverses a decision above it.*
+the original design left unresolved. D24–D25 were appended from the Step 2 handoff.
+Only D25 supersedes an earlier implementation choice: the provider named in D5.*
 
 ### D20 — Run-level coverage is independent of assessments
 
@@ -488,6 +491,19 @@ None reverses a decision above it.*
 - **Causation follows the same rule.** Temporal proximity may support co-occurrence language — *"during the same period"* or *"may be relevant"* — but never a causal assertion unless the evidence directly establishes it. The model may render this distinction; it may not promote correlation into cause.
 - **Consequences:** extraction provenance includes the evidence references and the model, prompt, schema and extraction versions needed to reproduce or invalidate the result. Downstream modules must tolerate partial candidates and explicit unknowns. The system can show less when evidence is incomplete, but it cannot silently fill the gaps. Exact text-span annotation and a general claim graph are not required for this version; traceability to the supporting evidence record is the deliberately smaller contract.
 
+### D25 — Gemini is the initial model-backed extractor
+
+- **Decision:** Use Gemini 2.5 Flash through the Gemini Developer API as the single active model-backed extractor for Step 2. The rule extractor remains the deterministic fallback and evaluation baseline. This is a provider replacement behind D5's existing seam, not multi-provider orchestration.
+- **Why:** The Claude adapter could be exercised only through stubbed transports because no Anthropic credential was available, leaving the real model path unvalidated. Gemini offers a free developer tier and schema-constrained structured output, which covers the current extraction requirement without weakening D24's grounding gate or adding a paid dependency. The requirement bends to the available provider because provider identity is not core to the product; evidence-grounded extraction is.
+- **Options:**
+  - **A (simplest)** — use the rule extractor alone. **Rejected:** it is precise and deterministic but currently misses too much real reporting, and it does not validate the model-assisted extraction boundary the design explicitly chose.
+  - **B** — keep Claude as the initial provider and wait for an Anthropic credential. **Rejected:** it leaves the only unresolved Step 2 acceptance path blocked for a provider choice the architecture intentionally made replaceable.
+  - **C (chosen)** — use Gemini's free tier behind the existing interface and retain the grounding gate and rule fallback.
+  - **D** — add OpenRouter, Groq or several providers with automatic routing. **Rejected:** this introduces provider-selection and failure-ordering machinery that the current product does not need; D5 deliberately chose isolation rather than a provider framework.
+- **Data boundary:** Free-tier Gemini usage may permit prompts and responses to be used to improve Google's products. Only public news evidence and the extraction schema may cross this boundary. User state, watchlists, sessions, credentials and other private data do not. If that restriction cannot be maintained, the free tier is not an acceptable deployment choice.
+- **Failure behaviour:** Quota exhaustion, rate limiting, provider errors and malformed output follow D5 and D24: evidence remains stored, the rule fallback may produce a separately-provenanced partial result, and affected evaluation health degrades visibly. Fallback output must never be represented as Gemini output.
+- **Consequences:** Gemini availability and free-tier limits are operational dependencies, not correctness dependencies. Model, prompt, schema, grounding and fallback provenance remain persisted so Gemini results can be evaluated against the same article set and replaced later by changing only the adapter. The active provider decision should be revisited before handling non-public evidence or moving beyond demonstration-scale traffic. See the [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) and [structured-output](https://ai.google.dev/gemini-api/docs/structured-output) contracts.
+
 ---
 
 ## Not doing
@@ -525,7 +541,7 @@ Four resolutions that were listed here have been folded into the decisions above
 
 ## Next
 
-Steps 0 and 1 are complete. The next reader should implement Step 2 against D5, D12, D13, D15, D20, D21 and D24 without reopening the architecture.
+Steps 0 and 1 are complete. The next reader should finish Step 2 against D5, D12, D13, D15, D20, D21, D24 and D25 without reopening the architecture. The remaining model-backed acceptance work uses Gemini; Claude credentials are no longer a prerequisite.
 
 ### Step 2 — Prove real news as meaningful change
 

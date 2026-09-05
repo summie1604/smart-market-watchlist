@@ -139,7 +139,13 @@ def _supported(value: str, haystack: set[str]) -> bool:
 
     Token-level rather than substring, so "Aramco" matches inside a longer phrase while
     an invented "Saudi Aramco Refining Ltd" whose distinctive words are absent does not.
-    Short tokens are ignored — they carry no evidence either way.
+
+    Two-character tokens count. "US", "UK", "EU" and "3M" are real values that appear in
+    real sources, and discarding them rejected grounded extractions — a false negative
+    that quietly weakens the output. Because matching is token-level rather than
+    substring, a short token cannot match spuriously: "us" does not match inside "thus",
+    since both sides are tokenised the same way. Single characters are still ignored;
+    they carry no evidence.
     """
-    words = [w for w in _WORD.findall(value.lower()) if len(w) > 2]
+    words = [w for w in _WORD.findall(value.lower()) if len(w) > 1]
     return bool(words) and all(w in haystack for w in words)
