@@ -1,10 +1,15 @@
-/* Smart Market Watchlist — terminal-style interface.
+/* Smart Market Watchlist — a calm reading surface for a judgement.
  *
- * Dark board, one accent per attention level. The visual language comes from a premarket
- * watchlist board; the content deliberately does not. Prices appear in exactly one place —
- * inside a company's detail, as a rebased comparison against its benchmarks — because a
- * chart on the main surface would make price the subject, and the argument of this product
- * is that price is one signal among several and often the slowest.
+ * Light ground, one accent per attention level. The product is an attention system, so the
+ * loudest thing on any screen is what changed and why it matters; prices appear in exactly
+ * one place — inside a company's detail, rebased against its benchmarks — because a chart
+ * on the main surface would make price the subject, and the argument here is that price is
+ * one signal among several and often the slowest.
+ *
+ * Monospace is a status typeface, not a body typeface: it marks levels, tickers, figures
+ * and timestamps, where character alignment helps a reader compare. Everything meant to be
+ * *read* — headings, explanations, evidence — is set in the system UI stack at a normal
+ * sentence case, because a wall of uppercase reads as a terminal and this is not one.
  *
  * Layout is mobile-first: one column, then two, then three. Every interactive control is
  * reachable by keyboard with a visible focus ring, and no meaning is carried by colour
@@ -36,8 +41,43 @@
   --quiet-dim: #161c1a;
   --accent: #22c55e;
 
-  --r: 6px;
+  /* One spacing rhythm. Before this the sheet used eleven ad-hoc padding values, which is
+     what makes an interface feel assembled rather than designed. */
+  --s1: 0.25rem;
+  --s2: 0.5rem;
+  --s3: 0.75rem;
+  --s4: 1rem;
+  --s5: 1.5rem;
+  --s6: 2rem;
+
+  --r-sm: 6px;
+  --r: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+
+  --focus: #087b76;
+  --lift: 0 1px 2px rgb(22 33 43 / 0.08);
+  --lift-hover: 0 8px 20px rgb(22 33 43 / 0.12);
+
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* One visible focus treatment for everything, so keyboard users never lose their place. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* Motion is functional here — a disclosure opening, a card lifting. Anyone who has asked
+   for less of it gets none. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -60,10 +100,11 @@ body {
 
 .nav { display: flex; gap: 0.3rem; }
 .nav button {
-  font-family: var(--mono); font-size: 0.76rem; letter-spacing: 0.05em; text-transform: uppercase;
+  font-size: 0.86rem; font-weight: 600; letter-spacing: 0;
   border: 1px solid var(--line-bright); background: transparent; color: var(--muted);
-  padding: 0.35rem 0.7rem; border-radius: var(--r); cursor: pointer;
-  min-height: 2rem;
+  padding: var(--s2) var(--s4); border-radius: var(--r-pill); cursor: pointer;
+  min-height: 2.25rem;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 .nav button:hover { color: var(--text); border-color: var(--accent); }
 .nav button[aria-current="true"] { background: var(--accent); border-color: var(--accent); color: #04140a; font-weight: 700; }
@@ -72,8 +113,10 @@ body {
 
 /* market-snapshot strip: coverage, not prices */
 .strip { border-bottom: 1px solid var(--line); background: var(--panel-2); }
-.strip-inner { max-width: 78rem; margin: 0 auto; padding: 0.4rem 1rem; display: flex; gap: 1.25rem; flex-wrap: wrap; font-family: var(--mono); font-size: 0.72rem; color: var(--faint); }
-.strip b { color: var(--muted); font-weight: 600; letter-spacing: 0.04em; }
+.strip-inner { max-width: 78rem; margin: 0 auto; padding: var(--s2) var(--s4); display: flex; gap: var(--s5); flex-wrap: wrap; font-size: 0.76rem; color: var(--faint); }
+.strip b { color: var(--muted); font-weight: 500; letter-spacing: 0; }
+.strip span { font-family: var(--mono); }
+.strip b { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 .strip .ok { color: var(--low); }
 .strip .bad { color: var(--high); }
 
@@ -142,9 +185,11 @@ button.ghost:hover { color: var(--high); border-color: transparent; }
 }
 
 .tile {
-  position: relative; display: flex; flex-direction: column; gap: 0.4rem;
+  position: relative; display: flex; flex-direction: column; gap: var(--s2);
   background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--quiet);
-  border-radius: var(--r); padding: 0.7rem 0.75rem 0.6rem;
+  border-radius: var(--r-lg); padding: var(--s4) var(--s4) var(--s3);
+  box-shadow: var(--lift);
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 .tile[data-tone="HIGH"] { border-top-color: var(--high); }
 .tile[data-tone="MEDIUM"] { border-top-color: var(--medium); }
@@ -152,7 +197,7 @@ button.ghost:hover { color: var(--high); border-color: transparent; }
 .tile[data-tone="UNABLE_TO_EVALUATE_RELIABLY"] { border-top-color: var(--unable); }
 .tile[data-tone="NEW"] { border-top-color: var(--accent); }
 /* The card responds as one object, because it behaves as one. */
-.tile:hover { border-color: var(--line-bright); background: var(--panel-2); }
+.tile:hover { border-color: var(--line-bright); background: var(--panel-2); box-shadow: var(--lift-hover); transform: translateY(-1px); }
 .tile:has(.tile-link:focus-visible) { border-color: var(--accent); }
 
 /* The whole card is one link.
@@ -165,7 +210,8 @@ button.ghost:hover { color: var(--high); border-color: transparent; }
 .tile-link {
   display: flex;
   align-items: baseline;
-  gap: 0.45rem;
+  gap: var(--s2);
+  flex-wrap: wrap;
   color: inherit;
   text-decoration: none;
   min-width: 0;
@@ -194,21 +240,17 @@ button.ghost:hover { color: var(--high); border-color: transparent; }
 
 .tile-body { display: flex; flex-direction: column; gap: 0.35rem; flex: 1; min-width: 0; }
 
-.tile-head { display: flex; align-items: baseline; gap: 0.45rem; }
+.tile-head { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
 .rank {
-  font-family: var(--mono); font-size: 0.68rem; font-weight: 700;
-  background: var(--quiet-dim); color: var(--muted); border-radius: 3px;
-  padding: 0.05rem 0.32rem; border: 1px solid var(--line-bright);
+  font-family: var(--mono); font-size: 0.7rem; font-weight: 500;
+  background: none; color: var(--faint); border: 0; padding: 0;
+  min-width: 1ch;
 }
-.tile[data-tone="HIGH"] .rank { background: var(--high-dim); color: var(--high); border-color: var(--high); }
-.tile[data-tone="MEDIUM"] .rank { background: var(--medium-dim); color: var(--medium); border-color: var(--medium); }
-.tile[data-tone="LOW"] .rank { background: var(--low-dim); color: var(--low); border-color: var(--low); }
-.tile[data-tone="UNABLE_TO_EVALUATE_RELIABLY"] .rank { background: var(--unable-dim); color: var(--unable); border-color: var(--unable); }
 
 .tile-sym { font-family: var(--mono); font-weight: 700; font-size: 1rem; letter-spacing: 0.02em; }
-.tile-co { color: var(--faint); font-size: 0.74rem; margin-left: auto; text-align: right; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-co { color: var(--muted); font-size: 0.78rem; flex-basis: 100%; margin-top: var(--s1); }
 
-.tile-dev { margin: 0; font-size: 0.86rem; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tile-dev { margin: 0; font-size: 0.92rem; line-height: 1.5; color: var(--text); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .tile-dev.none { color: var(--faint); font-style: italic; }
 
 .price-status { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem 0.5rem; font-family: var(--mono); }
@@ -221,14 +263,14 @@ button.ghost:hover { color: var(--high); border-color: transparent; }
 .sparkline { width: 4.5rem; height: 1.3rem; margin-left: auto; overflow: visible; }
 .sparkline path { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
 
-.tile-stats { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; font-family: var(--mono); font-size: 0.68rem; color: var(--faint); border-top: 1px dashed var(--line); padding-top: 0.4rem; }
+.tile-stats { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); font-family: var(--mono); font-size: 0.68rem; color: var(--faint); border-top: 1px solid var(--line); padding-top: var(--s2); }
 /* Three badges and a control. They wrap rather than overflow, because the number of
    badges is a property of the record and not something the layout gets to assume. */
 .tile-foot { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
 .tile-foot .ghost { margin-left: auto; }
 
 .badge {
-  display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px;
+  display: inline-block; padding: 0.12rem 0.45rem; border-radius: var(--r-sm);
   font-family: var(--mono); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
   border: 1px solid transparent; white-space: nowrap;
 }
@@ -238,13 +280,17 @@ button.ghost:hover { color: var(--high); border-color: transparent; }
 .badge[data-tone="UNABLE_TO_EVALUATE_RELIABLY"] { background: var(--unable-dim); color: var(--unable); border-color: var(--unable); }
 .badge[data-tone="QUIET"] { background: var(--quiet-dim); color: var(--quiet); border-color: var(--line-bright); }
 .badge[data-tone="NEW"] { background: var(--low-dim); color: var(--accent); border-color: var(--accent); }
-.badge.soft { background: transparent; color: var(--faint); border-color: var(--line-bright); font-weight: 500; letter-spacing: 0.03em; }
+.badge.soft {
+  background: transparent; color: var(--muted); border-color: var(--line-bright);
+  font-weight: 500; letter-spacing: 0; text-transform: none;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 0.72rem;
+}
 
 /* --- side rail ------------------------------------------------------------- */
 
 .rail { display: grid; gap: 0.75rem; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 0.75rem; }
-.card h3 { margin: 0 0 0.5rem; font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.card h3 { margin: 0 0 var(--s2); font-size: 0.9rem; font-weight: 600; letter-spacing: 0; color: var(--text); }
 .card p { margin: 0; font-size: 0.82rem; color: var(--muted); }
 .headline-figure { font-family: var(--mono); font-size: 1.55rem; font-weight: 700; line-height: 1.1; color: var(--text); }
 .headline-figure.calm { color: var(--muted); }
@@ -262,17 +308,19 @@ button.ghost:hover { color: var(--high); border-color: transparent; }
 @media (max-width: 40rem) { .detail { inset: 3.2rem 0 0 0; width: 100%; border-left: 0; border-radius: 10px 10px 0 0; } }
 
 .detail-head { padding: 0.8rem 0.9rem; border-bottom: 1px solid var(--line); display: flex; align-items: flex-start; gap: 0.7rem; }
-.detail-head h2 { margin: 0; font-family: var(--mono); font-size: 1rem; letter-spacing: 0.02em; }
-.detail-head p { margin: 0.15rem 0 0; color: var(--faint); font-size: 0.78rem; }
-.detail-body { overflow-y: auto; padding: 0.8rem 0.9rem 2.5rem; }
+.detail-head h2 { margin: 0; font-size: 1.3rem; font-weight: 600; letter-spacing: -0.01em; }
+.detail-head h2 .row-co { font-weight: 400; color: var(--muted); font-size: 0.95rem; }
+.detail-head p { margin: var(--s1) 0 0; color: var(--muted); font-size: 0.82rem; }
+.detail-body { overflow-y: auto; padding: var(--s5) var(--s4) var(--s6); display: grid; gap: var(--s5); }
 
-.group { margin-bottom: 1.1rem; }
-.group-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.45rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--line); }
-.group-head h3 { margin: 0; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.group { margin: 0; }
+.group-head { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+.group-head h3 { margin: 0; font-size: 0.95rem; font-weight: 600; letter-spacing: -0.005em; color: var(--text); }
 .group-head .n { font-family: var(--mono); font-size: 0.7rem; color: var(--faint); margin-left: auto; }
-.type-head { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); margin: 0.55rem 0 0.3rem; }
+.type-head { font-size: 0.78rem; font-weight: 600; color: var(--muted); margin: var(--s3) 0 var(--s1); }
 
-.event { border: 1px solid var(--line); border-left: 2px solid var(--quiet); border-radius: var(--r); padding: 0.6rem 0.7rem; margin-bottom: 0.45rem; background: var(--panel-2); }
+.event { border: 1px solid var(--line); border-left: 2px solid var(--quiet); border-radius: var(--r); padding: var(--s3) var(--s4); margin-bottom: var(--s2); background: var(--panel-2); transition: border-color 140ms ease; }
+.event:hover { border-color: var(--line-bright); }
 .event[data-tone="HIGH"] { border-left-color: var(--high); }
 .event[data-tone="MEDIUM"] { border-left-color: var(--medium); }
 .event[data-tone="LOW"] { border-left-color: var(--low); }
@@ -281,12 +329,12 @@ button.ghost:hover { color: var(--high); border-color: transparent; }
 .event-toggle { all: unset; display: block; width: 100%; cursor: pointer; }
 .event-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .event-summary { display: block; font-size: 0.88rem; line-height: 1.45; }
-.event-expand { display: block; margin-top: 0.35rem; font-family: var(--mono); font-size: 0.68rem; color: var(--accent); }
+.event-expand { display: block; margin-top: var(--s2); font-size: 0.78rem; font-weight: 600; color: var(--accent); }
 .event-kind { font-family: var(--mono); font-size: 0.68rem; color: var(--faint); }
 .event p { margin: 0 0 0.35rem; font-size: 0.88rem; }
 .event ul { margin: 0.15rem 0 0.35rem; padding-left: 1rem; font-size: 0.82rem; color: var(--muted); }
 .event li.against { color: var(--faint); }
-.why-title { font-family: var(--mono); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--faint); margin: 0.35rem 0 0.1rem; }
+.why-title { font-size: 0.8rem; font-weight: 600; color: var(--muted); margin: var(--s3) 0 var(--s1); }
 .event-facts { font-size: 0.78rem; color: var(--faint); margin: 0.3rem 0 0; font-family: var(--mono); }
 /* A real gap, and true of every event assessed in that window — so it is marked rather
    than shouted, or it drowns out the developments themselves. */
@@ -297,12 +345,12 @@ button.ghost:hover { color: var(--high); border-color: transparent; }
 
 /* --- states ---------------------------------------------------------------- */
 
-.notice { border: 1px solid var(--line); border-left: 2px solid var(--accent); background: var(--panel); border-radius: var(--r); padding: 0.55rem 0.7rem; font-size: 0.84rem; margin-bottom: 0.8rem; }
+.notice { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--panel); border-radius: var(--r); padding: var(--s3) var(--s4); font-size: 0.86rem; line-height: 1.5; margin-bottom: var(--s4); }
 .notice.error { border-left-color: var(--high); }
 .notice.ok { border-left-color: var(--low); }
 
 .blank { text-align: center; padding: 2.5rem 1rem; color: var(--muted); border: 1px dashed var(--line-bright); border-radius: var(--r); }
-.blank h3 { margin: 0 0 0.3rem; font-family: var(--mono); font-size: 0.9rem; color: var(--text); letter-spacing: 0.04em; text-transform: uppercase; }
+.blank h3 { margin: 0 0 var(--s2); font-size: 1rem; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
 .blank p { margin: 0 auto; max-width: 28rem; font-size: 0.86rem; }
 
 .skeleton { height: 7rem; border-radius: var(--r); background: linear-gradient(90deg,#0e1214 25%,#161c1e 50%,#0e1214 75%); background-size: 200% 100%; animation: sh 1.3s infinite; }
@@ -328,14 +376,14 @@ button.ghost:hover { color: var(--high); border-color: transparent; }
  */
 
 .filters {
-  display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; align-items: flex-start;
-  padding: 0.6rem 0.7rem; margin-bottom: 0.9rem;
+  display: flex; flex-wrap: wrap; gap: var(--s3) var(--s5); align-items: center;
+  padding: var(--s3) var(--s4); margin-bottom: var(--s4);
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
 }
 .filter { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .filter > label, .filter > span {
   font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--muted);
+  color: var(--muted);
 }
 select {
   font: inherit; font-size: 0.82rem; min-height: 2.25rem; padding: 0.3rem 0.5rem;
@@ -360,17 +408,17 @@ select {
   margin: 0 0 0.9rem;
 }
 .lead h1 {
-  margin: 0; font-family: var(--mono); font-size: 0.9rem;
-  letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
+  margin: 0; font-size: 1rem; font-weight: 600;
+  letter-spacing: -0.005em; color: var(--text);
 }
-.lead p { margin: 0.15rem 0 0; color: var(--faint); font-size: 0.82rem; }
+.lead p { margin: var(--s1) 0 0; color: var(--muted); font-size: 0.85rem; }
 .lead .primary { margin-left: auto; min-height: 2.5rem; }
 .footnote { color: var(--faint); font-size: 0.78rem; margin: 0.6rem 0 0; }
 
 /* --- attention rows ---------------------------------------------------------- */
 
 .attn-rows { list-style: none; padding: 0; margin: 0; }
-.attn-rows li { margin-bottom: 0.5rem; }
+.attn-rows li { margin-bottom: var(--s3); }
 .attn-row { min-height: 3rem; align-items: stretch; }
 .attn-row[data-tone="HIGH"] { border-left-color: var(--high); }
 .attn-row[data-tone="MEDIUM"] { border-left-color: var(--medium); }
@@ -397,8 +445,8 @@ select {
 .rest-group[data-tone="warn"] .group-head h2 { color: var(--unable); }
 .rest-group .group-head { display: flex; align-items: baseline; gap: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--line); }
 .rest-group h2 {
-  margin: 0; font-family: var(--mono); font-size: 0.74rem;
-  letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent);
+  margin: 0; font-size: 0.95rem; font-weight: 600;
+  letter-spacing: -0.005em; color: var(--text);
 }
 .rest-group .n { font-family: var(--mono); font-size: 0.7rem; color: var(--faint); margin-left: auto; }
 .group-note { margin: 0.35rem 0 0.5rem; font-size: 0.78rem; color: var(--faint); }
@@ -408,7 +456,8 @@ select {
   text-align: left; background: var(--panel); border: 1px solid var(--line);
   padding: 0.45rem 0.6rem; font: inherit; color: inherit;
 }
-.rest-row:hover { border-color: var(--line-bright); color: inherit; }
+.rest-row { border-radius: var(--r); transition: border-color 140ms ease, background 140ms ease; }
+.rest-row:hover { border-color: var(--line-bright); background: var(--panel-2); color: inherit; }
 .rest-text { flex: 1; min-width: 0; font-size: 0.82rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rest-when { font-family: var(--mono); font-size: 0.7rem; color: var(--faint); }
 
@@ -436,7 +485,7 @@ textarea {
   border: 1px solid var(--line-bright); border-radius: var(--r);
 }
 .tagset { border: 1px dashed var(--line-bright); border-radius: var(--r); padding: 0.5rem 0.6rem; display: flex; flex-wrap: wrap; gap: 0.3rem; }
-.tagset legend { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 0 0.3rem; }
+.tagset legend { font-size: 0.8rem; font-weight: 600; color: var(--muted); padding: 0 var(--s1); }
 .interests-foot { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .interests-foot button { min-height: 2.5rem; }
 
@@ -445,7 +494,7 @@ textarea {
 .detail-title { flex: 1; min-width: 0; }
 .detail-head button { min-height: 2.5rem; }
 .yours { border-left: 2px solid var(--accent); padding: 0.4rem 0 0.4rem 0.6rem; margin-bottom: 1rem; }
-.yours h3 { margin: 0 0 0.25rem; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.yours h3 { margin: 0 0 var(--s1); font-size: 0.85rem; font-weight: 600; color: var(--muted); }
 .yours p { margin: 0.15rem 0; font-size: 0.84rem; color: var(--muted); }
 
 /* A dispute changes how sure we are, not how much something matters — so it is marked
@@ -464,7 +513,7 @@ textarea {
 
 .chart { border: 1px solid var(--line); border-radius: var(--r); padding: 0.7rem; margin-bottom: 1.1rem; background: var(--panel-2); }
 .chart-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
-.chart-head h3 { margin: 0; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.chart-head h3 { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text); }
 .ranges { display: flex; gap: 0.25rem; margin-left: auto; }
 .ranges button { font-family: var(--mono); font-size: 0.7rem; padding: 0.25rem 0.5rem; min-height: 2rem; background: transparent; color: var(--muted); }
 .ranges button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #04140a; font-weight: 700; }
@@ -493,9 +542,6 @@ textarea {
 
 .notice.warn { border-left-color: var(--unable); }
 
-@media (prefers-reduced-motion: reduce) {
-  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-}
 
 /* --- source standing (D36) ----------------------------------------------------
  *
@@ -511,6 +557,10 @@ textarea {
   color: var(--faint);
   font-weight: 500;
   letter-spacing: 0.03em;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 0.72rem;
 }
 .badge.standing[data-standing="OFFICIAL"] {
   color: var(--low);
@@ -545,15 +595,14 @@ textarea {
 .tile-more {
   align-self: flex-start;
   min-height: 2rem;
-  padding: 0.25rem 0.5rem;
-  font-family: var(--mono);
-  font-size: 0.66rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  padding: var(--s1) var(--s2);
+  font-size: 0.78rem;
+  font-weight: 600;
   background: transparent;
   border-color: transparent;
-  color: var(--faint);
+  color: var(--muted);
 }
+.tile-more:hover:not(:disabled) { color: var(--accent); }
 .tile-more:hover:not(:disabled) {
   color: var(--accent);
   border-color: var(--line-bright);
@@ -666,10 +715,7 @@ textarea {
 }
 .watch-head h3 {
   margin: 0;
-  font-family: var(--mono);
   font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--muted);
 }
 .watch-head p {
@@ -851,11 +897,10 @@ textarea {
   bottom: 1rem;
   z-index: 60;
   min-height: 2.75rem;
-  padding: 0.5rem 1.1rem;
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding: var(--s2) var(--s4);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: var(--r-pill);
   background: var(--accent);
   border-color: var(--accent);
   color: #04140a;
@@ -873,14 +918,15 @@ textarea {
   right: 1rem;
   bottom: 4.5rem;
   z-index: 60;
-  width: min(24rem, calc(100vw - 2rem));
-  max-height: min(34rem, calc(100vh - 7rem));
+  width: min(34rem, calc(100vw - 2rem));
+  height: min(40rem, calc(100vh - 7rem));
+  max-height: calc(100vh - 7rem);
   display: flex;
   flex-direction: column;
   background: var(--panel);
   border: 1px solid var(--line-bright);
-  border-radius: var(--r);
-  box-shadow: 0 12px 40px rgb(0 0 0 / 55%);
+  border-radius: var(--r-lg);
+  box-shadow: 0 16px 50px rgb(0 0 0 / 60%);
 }
 
 .assistant-head {
@@ -892,10 +938,7 @@ textarea {
 }
 .assistant-head h2 {
   margin: 0;
-  font-family: var(--mono);
   font-size: 0.74rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--muted);
 }
 .assistant-head p {
@@ -909,8 +952,10 @@ textarea {
 
 .assistant-log {
   overflow-y: auto;
-  padding: 0.6rem 0.75rem;
+  padding: var(--s4);
   flex: 1;
+  font-size: 0.9rem;
+  line-height: 1.55;
 }
 .assistant-empty,
 .assistant-busy {
@@ -1088,6 +1133,15 @@ textarea {
   .assistant-head .ghost + .ghost {
     margin-left: 0;
   }
+  /* A phone has no room for a floating panel, so the drawer becomes a full sheet. */
+  .assistant {
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    width: auto;
+    height: calc(100vh - 4rem);
+    max-height: calc(100vh - 4rem);
+  }
 }
 
 /* --- the hero: while you were away ---------------------------------------------
@@ -1179,8 +1233,6 @@ textarea {
   color: var(--text);
   font-family: var(--mono);
   font-size: 0.72rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   display: block;
 }
 
@@ -1195,13 +1247,16 @@ textarea {
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 3px solid var(--quiet);
-  border-radius: var(--r);
-  padding: 0.7rem 0.85rem;
+  border-radius: var(--r-lg);
+  padding: var(--s4);
+  box-shadow: var(--lift);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 .attn-row[data-tone="HIGH"] { border-left-color: var(--high); }
 .attn-row[data-tone="MEDIUM"] { border-left-color: var(--medium); }
 .attn-row[data-tone="LOW"] { border-left-color: var(--low); }
-.attn-row:hover { border-color: var(--line-bright); }
+.attn-row:hover { border-color: var(--line-bright); box-shadow: var(--lift-hover); }
+.attn-row:has(.attn-open:focus-visible) { border-color: var(--accent); }
 .attn-main { flex: 1; min-width: 0; }
 
 .attn-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
@@ -1415,8 +1470,8 @@ textarea {
   border-top: 1px solid var(--line);
 }
 .away-answer h3 {
-  margin: 0 0 0.7rem;
-  font-size: 1.05rem;
+  margin: 0 0 var(--s3);
+  font-size: 1.15rem;
   font-weight: 600;
   color: var(--text);
 }
@@ -1443,8 +1498,10 @@ textarea {
   border-left: 3px solid var(--quiet);
   background: var(--panel-2);
   border-radius: 0 var(--r) var(--r) 0;
-  padding: 0.6rem 0.75rem;
+  padding: var(--s3) var(--s4);
+  transition: background 140ms ease;
 }
+.preview:hover { background: var(--panel); }
 .preview[data-tone="HIGH"] { border-left-color: var(--high); }
 .preview[data-tone="MEDIUM"] { border-left-color: var(--medium); }
 .preview[data-tone="LOW"] { border-left-color: var(--low); }
@@ -1560,4 +1617,404 @@ textarea {
   .away-head h2 { font-size: 1.2rem; }
   .preview-when { margin-left: 0; width: 100%; }
   .preview-link { min-height: 2.5rem; }
+}
+
+
+/* --- hints ------------------------------------------------------------------- */
+
+/* An explanation for the vocabulary this product invents. Deliberately small and quiet:
+   a reader who already knows the word should barely notice it. Shown on hover and on
+   `:focus-within`, so a keyboard tab and a touch tap both reveal it. */
+.hint {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: var(--s1);
+}
+.hint-dot {
+  all: unset;
+  cursor: help;
+  display: grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 1px solid var(--line-bright);
+  border-radius: var(--r-pill);
+  color: var(--faint);
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: var(--mono);
+  line-height: 1;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.hint-dot:hover { color: var(--text); border-color: var(--accent); }
+.hint-dot:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.hint-body {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  width: max-content;
+  max-width: min(20rem, 70vw);
+  padding: var(--s2) var(--s3);
+  background: var(--panel-2);
+  border: 1px solid var(--line-bright);
+  border-radius: var(--r);
+  box-shadow: var(--lift-hover);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.45;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease;
+}
+.hint:hover .hint-body,
+.hint:focus-within .hint-body {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Near the right edge the panel would otherwise be clipped by the card. */
+@media (max-width: 40rem) {
+  .hint-body { left: auto; right: -0.5rem; transform: none; max-width: 78vw; }
+}
+
+
+/* --- price, in its place ------------------------------------------------------ */
+
+/* Reads as a supporting line under the development, not as the headline. The move keeps
+   its colour because direction is state; the absolute close does not, because a number
+   being large is not a finding. */
+.tile .price-status {
+  border-top: 1px solid var(--line);
+  padding-top: var(--s2);
+}
+/* The absolute close is context; the move is state. Only the second carries colour, and
+   only the second is emphasised. */
+.tile .price-status .price { font-size: 0.88rem; font-weight: 600; color: var(--muted); }
+.tile .price-status .move { font-size: 0.78rem; font-weight: 600; }
+
+/* --- watchlist card rhythm ---------------------------------------------------- */
+
+.tile-body { gap: var(--s2); }
+.tile-foot { gap: var(--s2); padding-top: var(--s1); }
+.tile-more { border-radius: var(--r-sm); }
+
+
+/* --- page rhythm -------------------------------------------------------------- */
+
+.lead { margin: 0 0 var(--s4); }
+.add { margin-bottom: var(--s4); }
+.filter { margin-bottom: var(--s4); }
+.board { gap: var(--s4); }
+.tiles { gap: var(--s4); }
+.main { padding-top: var(--s5); padding-bottom: var(--s6); }
+
+
+/* --- loading ------------------------------------------------------------------ */
+
+.loading { display: grid; gap: var(--s4); }
+.skeleton-lead { height: 3rem; max-width: 22rem; }
+.skeleton-hero { height: 9rem; }
+.skeleton-card { height: 6rem; }
+
+/* Technical detail stays available and stops being the headline. */
+.notice-detail {
+  display: block;
+  margin-top: var(--s2);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--faint);
+}
+
+
+/* --- interactive states, one grammar ------------------------------------------ */
+
+/* Every control answers the same three questions the same way: can I press this, am I
+   pressing it, and is it on. Before this, hover was defined per-component and a reader
+   had to discover what was clickable. */
+button, select, input, .tile-link, .preview-link {
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+button:not(:disabled):active { transform: translateY(1px); }
+
+/* Chosen state on a toggle is filled, not merely tinted — the reference's clearest idea. */
+button[aria-pressed="true"] { font-weight: 600; }
+
+/* The disclosure controls that open reasoning, related records and evidence. */
+.why-toggle, .how-toggle, .event-toggle, .tile-more {
+  cursor: pointer;
+}
+.why-toggle::after {
+  content: " ›";
+  display: inline-block;
+  transition: transform 140ms ease;
+}
+.why-toggle[aria-expanded="true"]::after { transform: rotate(90deg); }
+
+/* A select should look like something you can change. */
+select { cursor: pointer; border-radius: var(--r-sm); }
+select:hover { border-color: var(--line-bright); }
+
+/* Nothing is clickable-looking that is not clickable. */
+[aria-disabled="true"], button:disabled { cursor: not-allowed; }
+
+
+/* --- comfortable targets ------------------------------------------------------ */
+
+/* The hint stays visually small — it must not compete with the label it explains — but
+   its pressable area is a full target, extended past the dot rather than around it. */
+.hint-dot { position: relative; }
+.hint-dot::before {
+  content: "";
+  position: absolute;
+  inset: -0.45rem;
+  border-radius: var(--r-pill);
+}
+
+/* Evidence links sit inline inside a sentence, so they cannot be boxed out to 32px
+   without breaking the line. Padding buys back most of it. */
+.sources a,
+.evidence a {
+  display: inline-block;
+  padding: var(--s1) 0;
+  min-height: 1.75rem;
+}
+
+
+/* On a phone the assistant's full label covers the development behind it, so the button
+   keeps its accessible name and shows the short one. */
+@media (max-width: 30rem) {
+  .assistant-open { font-size: 0; padding: var(--s2) var(--s4); }
+  .assistant-open::after { content: "Ask"; font-size: 0.85rem; }
+}
+
+/* --- clearer conversation and price context --------------------------------- */
+
+/* The assistant is intentionally generous once opened: it is a reading surface, not a
+   tiny tooltip. The mobile sheet keeps the same full-height treatment. */
+.assistant {
+  width: min(42rem, calc(100vw - 2rem));
+  height: min(46rem, calc(100vh - 6.5rem));
+  max-height: calc(100vh - 6.5rem);
+  box-shadow: 0 20px 60px rgb(23 33 43 / 24%);
+}
+.assistant-head { padding: 1rem 1.1rem 0.75rem; }
+.assistant-head h2 { font-size: 1rem; color: var(--text); }
+.assistant-head p { font-size: 0.82rem; }
+.assistant-log { padding: 1rem 1.1rem; font-size: 0.96rem; }
+.assistant-openers { padding: 0 1.1rem 0.75rem; }
+.assistant-form { padding: 0.75rem 1.1rem 1rem; }
+@media (min-width: 60rem) {
+  .main:has(~ .assistant), .main:has(.assistant) { padding-right: 32rem; }
+}
+@media (max-width: 34rem) {
+  .assistant {
+    height: calc(100vh - 2rem);
+    max-height: calc(100vh - 2rem);
+  }
+}
+
+/* The full company chart gets the calmer, filled shape from the reference while the
+   source remains our stored end-of-day series. */
+.chart { padding: 1rem; border-radius: 0.9rem; background: var(--panel); box-shadow: var(--lift); }
+.chart-head { margin-bottom: 0.9rem; }
+.chart-head h3 { font-size: 1rem; }
+.ranges { gap: 0.35rem; }
+.ranges button { min-height: 2.15rem; border: 0; border-radius: var(--r-pill); padding: 0.3rem 0.65rem; }
+.ranges button[aria-pressed="true"] { color: #fff; }
+.chart-plot {
+  height: clamp(13rem, 28vw, 19rem);
+  padding: 0.5rem 0.25rem 0.15rem;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 72%);
+}
+
+
+/* --- reference-led financial shell ------------------------------------------ */
+
+/* The reference is a composition: a broad, quiet canvas; one summary band; editorial
+   developments; then an efficient market list. These overrides deliberately change that
+   composition without changing a single domain decision or API response. */
+.main, .topbar-inner, .strip-inner { max-width: 88rem; }
+.main { padding-inline: clamp(1rem, 3vw, 2.5rem); }
+.topbar { background: color-mix(in srgb, var(--bg) 90%, #e7f1f1); backdrop-filter: blur(16px); }
+.topbar-inner { min-height: 4.25rem; }
+.brand-name { font-size: 1.05rem; font-weight: 650; }
+.nav { padding: 0.25rem; border-radius: var(--r-pill); background: var(--panel-2); border: 1px solid var(--line); }
+.nav button { border: 0; border-radius: var(--r-pill); min-height: 2.25rem; text-transform: none; letter-spacing: 0; }
+.nav button[aria-current="true"] { background: var(--accent); color: #04140a; }
+
+.away { border: 0; border-radius: 1.15rem; padding: clamp(1.25rem, 3vw, 2rem); background: linear-gradient(135deg, var(--panel), color-mix(in srgb, var(--panel) 86%, #10201f)); box-shadow: var(--lift); }
+.away-head h2 { font-size: clamp(1.65rem, 3vw, 2.35rem); letter-spacing: -0.035em; }
+.eyebrow { margin: 0 0 0.25rem; color: var(--accent); font-family: var(--mono); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+
+.away-answer { margin-top: 1.75rem; padding-top: 0; border: 0; }
+.away-answer h3 { font-size: 1.3rem; letter-spacing: -0.02em; }
+.previews { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.preview { display: flex; min-height: 15rem; flex-direction: column; border: 1px solid var(--line); border-left: 3px solid var(--quiet); border-radius: 0.9rem; padding: 1.15rem; background: color-mix(in srgb, var(--panel-2) 92%, transparent); }
+.preview:hover { background: var(--panel); transform: translateY(-2px); box-shadow: var(--lift-hover); }
+.preview-head { margin-bottom: 1rem; }
+.preview-what { font-size: 1.03rem; font-weight: 560; line-height: 1.45; }
+.preview-why { margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--line); }
+.preview-link { margin-top: 0.65rem; font-weight: 600; }
+
+/* Watchlist becomes a scan-first financial list on desktop. The same DOM remains a card
+   presentation on narrow screens, so there is no second business path. */
+@media (min-width: 52rem) {
+  .tiles { display: grid; grid-template-columns: 1fr; gap: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 1rem; background: var(--panel); }
+  .tile { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(12rem, 1.7fr) minmax(11rem, 1fr) minmax(9rem, 1fr) auto auto; gap: 1rem; align-items: center; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 1.05rem 1.25rem; background: transparent; box-shadow: none; }
+  .tile:last-child { border-bottom: 0; }
+  .tile:hover { background: var(--panel-2); transform: none; box-shadow: none; }
+  /* Still one stretched link over the whole row: a click anywhere that is not another
+     control opens the company, which is the behaviour the card layout has too. */
+  .tile-link { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.3rem 0.5rem; }
+  .tile-link .rank { order: -1; }
+  .tile-link .tile-co { flex-basis: 100%; margin-top: 0.1rem; }
+  .tile-body { order: 2; }
+  .tile .price-status { order: 3; border: 0; padding: 0; }
+  .tile-stats { order: 4; border: 0; padding: 0; }
+  .tile-more { order: 5; }
+  .tile-detail { grid-column: 1 / -1; }
+  /* Remove lives here. Hiding the row hid the only way to stop following a company. */
+  .tile-foot { order: 6; display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
+  .tile-foot .badge { display: none; }
+  .tile-foot .ghost { margin-left: 0; }
+}
+
+@media (max-width: 51.99rem) {
+  .previews { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 30rem) {
+  .main { padding-inline: 0.85rem; }
+  .away { border-radius: 0.85rem; padding: 1rem; }
+  .preview { min-height: auto; }
+}
+
+
+/* --- price chart --------------------------------------------------------------
+ *
+ * The security is the subject: it gets the accent, the weight and the fill. Benchmarks
+ * are thin and grey because they are the thing it is being measured against, not two more
+ * things to read. Axis text lives inside the SVG so it scales with the plot.
+ */
+
+.chart { padding: var(--s4); margin: 0; }
+.chart-head { margin-bottom: var(--s3); }
+
+.chart-plot {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 760 / 300;
+  min-height: 11rem;
+  height: auto;
+}
+.chart-plot svg { width: 100%; height: 100%; overflow: visible; display: block; }
+
+.chart-plot .gridline {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+  vector-effect: non-scaling-stroke;
+}
+.chart-plot .baseline { stroke: var(--line-bright); stroke-dasharray: 4 5; }
+/* The presentation attribute on the element loses to `.chart-plot path { fill: none }`,
+   so the gradient has to be named here or the area silently does not paint. */
+.chart-plot .area { fill: url(#area-fill); stroke: none; }
+.chart-plot .series-security { stroke: var(--accent); stroke-width: 2; }
+.chart-plot .series-sector { stroke: var(--muted); stroke-width: 1.25; stroke-dasharray: 5 4; }
+.chart-plot .series-broad { stroke: var(--quiet); stroke-width: 1.25; stroke-dasharray: 2 4; }
+
+.chart-plot .axis-value,
+.chart-plot .axis-date {
+  fill: var(--faint);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.chart-plot .axis-date { text-anchor: middle; }
+
+.chart-plot .last-value rect { fill: var(--accent); }
+.chart-plot .last-value text { fill: #04140a; font-family: var(--mono); font-size: 12px; font-weight: 700; }
+
+/* A development, on the session it was recorded in. */
+.chart-plot .marker-stem {
+  stroke: var(--quiet);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+.chart-plot .marker-hit { fill: transparent; cursor: pointer; }
+.chart-plot .marker-hit:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 50%; }
+.chart-plot .marker-dot {
+  fill: var(--quiet);
+  stroke: var(--panel-2);
+  stroke-width: 2;
+  pointer-events: none;
+  transition: r 120ms ease;
+}
+.chart-plot .marker-count {
+  fill: #04140a;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.chart-plot .marker[data-tone="HIGH"] .marker-dot { fill: var(--high); }
+.chart-plot .marker[data-tone="HIGH"] .marker-stem { stroke: var(--high); }
+.chart-plot .marker[data-tone="MEDIUM"] .marker-dot { fill: var(--medium); }
+.chart-plot .marker[data-tone="MEDIUM"] .marker-stem { stroke: var(--medium); }
+.chart-plot .marker[data-tone="LOW"] .marker-dot { fill: var(--low); }
+.chart-plot .marker[data-tone="UNABLE_TO_EVALUATE_RELIABLY"] .marker-dot { fill: var(--unable); }
+
+/* The read-out under the plot. A caption, not a floating tooltip: it cannot fall off a
+   narrow screen and it has room for a headline. */
+.chart-readout {
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+  min-height: 4.25rem;
+}
+.chart-readout p { margin: 0; }
+.chart-readout-idle { font-size: 0.78rem; color: var(--faint); }
+.chart-readout ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+.chart-readout li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+.chart-readout-what { flex: 1; min-width: 12rem; font-size: 0.88rem; color: var(--text); }
+.chart-readout-when { font-family: var(--mono); font-size: 0.7rem; color: var(--faint); }
+.chart-readout-caveat { margin-top: var(--s2) !important; font-size: 0.74rem; color: var(--faint); }
+
+.chart-skeleton { height: clamp(11rem, 28vw, 19rem); border-radius: var(--r); background: var(--panel); }
+
+/* The range selector now sits under the plot, so it no longer floats right of a heading. */
+.ranges { margin: var(--s3) 0 0; gap: var(--s1); }
+.ranges button {
+  font-family: var(--mono); font-size: 0.72rem;
+  padding: var(--s1) var(--s3); min-height: 2.15rem;
+  border: 1px solid transparent; border-radius: var(--r-pill);
+  background: transparent; color: var(--muted);
+}
+.ranges button:hover { color: var(--text); background: var(--panel); }
+.ranges button[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: #04140a; font-weight: 700;
+}
+
+.legend b.up { color: var(--low); }
+.legend b.down { color: var(--high); }
+
+@media (max-width: 40rem) {
+  .chart-plot { aspect-ratio: 760 / 420; }
+  .chart-readout-what { min-width: 100%; }
 }

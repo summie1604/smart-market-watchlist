@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Assessment, WatchedCompany, WatchPoint } from "../lib/api";
-import { byTime, disputedBy, whenText, type CompanyRow } from "../lib/rows";
+import { attentionLabel, byTime, disputedBy, whenText, type CompanyRow } from "../lib/rows";
 import Assistant from "./Assistant";
 import WatchPointBar from "./WatchPoints";
 import PriceChart from "./PriceChart";
@@ -76,9 +76,38 @@ export default function CompanyDetail({
             <p className={`notice ${row.state === "unable" ? "warn" : ""}`}>{row.detail}</p>
           )}
 
+          {/* The page reads as a sequence rather than a record dump: what happened, in
+              what order, what the market did around it, and finally what this reader
+              asked to be told. A form and a chart used to open the page, which answered
+              a question nobody had arrived with. */}
+          {row.history.length === 0 ? (
+            <div className="blank">
+              <h3>Nothing recorded yet</h3>
+              <p>
+                We are watching this company. As soon as something is assessed, it appears
+                here.
+              </p>
+            </div>
+          ) : (
+            <section className="group">
+              <div className="group-head">
+                <h3>What happened</h3>
+                <span className="n">{row.history.length}</span>
+              </div>
+              <p className="group-note">Most important first. Open an item for the evidence and why it matters.</p>
+              {byImportance(row.history).map((assessment) => (
+                <EventCard key={assessment.event_id} assessment={assessment} known={known} />
+              ))}
+            </section>
+          )}
+
+          <Timeline history={row.history} />
+
+          <PriceChart symbol={row.symbol} developments={byImportance(row.history)} />
+
           {membership !== undefined && (membership.reason || membership.watch_for) && (
             <section className="yours">
-              <h3>What you said</h3>
+              <h3>Why you follow this</h3>
               {membership.reason && <p>{membership.reason}</p>}
               {membership.watch_for && (
                 <p>
@@ -95,32 +124,7 @@ export default function CompanyDetail({
             onChanged={onChanged}
           />
 
-          <PriceChart symbol={row.symbol} />
-
           <AlertHistory points={points.filter((point) => point.symbol === row.symbol)} />
-
-          <Timeline history={row.history} />
-
-          {row.history.length === 0 ? (
-            <div className="blank">
-              <h3>Nothing recorded yet</h3>
-              <p>
-                We are watching this company. As soon as something is assessed, it appears
-                here.
-              </p>
-            </div>
-          ) : (
-            <section className="group">
-              <div className="group-head">
-                <h3>News & market events</h3>
-                <span className="n">{row.history.length}</span>
-              </div>
-              <p className="group-note">Most important first. Open an item for the evidence and why it matters.</p>
-              {byImportance(row.history).map((assessment) => (
-                <EventCard key={assessment.event_id} assessment={assessment} known={known} />
-              ))}
-            </section>
-          )}
         </div>
 
       {/* The same assistant as the board, carrying this company as context so "why did
@@ -214,7 +218,7 @@ function Timeline({ history }: { history: Assessment[] }) {
             <span className="tl-kind">{label}</span>
             <span className="tl-what">{assessment.description}</span>
             <span className="badge" data-tone={assessment.attention}>
-              {assessment.attention.replace(/_/g, " ").toLowerCase()}
+              {attentionLabel(assessment.attention)}
             </span>
           </li>
         ))}
@@ -249,7 +253,7 @@ export function EventCard({
       <button type="button" className="event-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
         <span className="event-head">
           <span className="badge" data-tone={a.attention}>
-            {a.attention.replace(/_/g, " ").toLowerCase()}
+            {attentionLabel(a.attention)}
           </span>
           <span className="badge soft">{a.confidence.toLowerCase()} confidence</span>
         <span className="badge standing" data-standing={a.source_standing}>

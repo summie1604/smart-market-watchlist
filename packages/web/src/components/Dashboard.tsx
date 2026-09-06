@@ -41,6 +41,7 @@ import {
 import {
   applyFocus,
   buildRows,
+  attentionLabel,
   demandingDevelopments,
   differingVerdicts,
   filterByCompany,
@@ -213,8 +214,9 @@ export default function Dashboard() {
         {phase === "loading" && <Skeletons />}
         {phase === "error" && (
           <div className="notice error">
-            <strong>Can’t reach the service.</strong> {error} Start it with{" "}
-            <code>make run-api</code> and reload. Nothing here is a finding about the market.
+            <strong>We couldn’t load your watchlist.</strong> Nothing here is a finding
+            about the market — it is our side that is unavailable. Try reloading.
+            <span className="notice-detail">{error}</span>
           </div>
         )}
 
@@ -350,7 +352,14 @@ function WhileYouWereAway({
   return (
     <section className="away" aria-labelledby="away-heading">
       <div className="away-head">
-        <h2 id="away-heading">While you were away</h2>
+        <div>
+          {/* Both counts this used to headline are stated better a few lines down — as
+              "N things need your attention" with the things themselves, and as the
+              triggered level with its note. Repeating them as large figures pushed the
+              developments below the fold to say nothing new. */}
+          <p className="eyebrow">New action items</p>
+          <h2 id="away-heading">While you were away</h2>
+        </div>
       </div>
 
       {/* The answer, immediately. A count without the things it counts makes a reader
@@ -390,7 +399,13 @@ function WhileYouWereAway({
           — open the company, mark it seen — rather than a second section repeating it. */}
       {triggered.length > 0 && (
         <div className="away-asked">
-          <h3>You asked to be told</h3>
+          <h3>
+            You asked to be told
+            <Hint term="a watch point">
+              A price level or percentage move you set yourself. We tell you when an
+              end-of-day close reaches it.
+            </Hint>
+          </h3>
           <ul>
             {triggered.map((point) => (
               <li key={point.point_id}>
@@ -437,6 +452,10 @@ function WhileYouWereAway({
             {evaluated}/{rows.length}
           </b>{" "}
           evaluated
+          <Hint term="evaluated">
+            How many of the companies you follow we could check this time. A source being
+            down does not make a company quiet.
+          </Hint>
         </span>
       </p>
 
@@ -468,7 +487,7 @@ function AttentionPreview({ group }: { group: AttentionGroup }) {
     <article className="preview" data-tone={assessment.attention}>
       <p className="preview-head">
         <span className="attn-level" data-tone={assessment.attention}>
-          {assessment.attention.replace(/_/g, " ").toLowerCase()}
+          {attentionLabel(assessment.attention)}
         </span>
         <b className="preview-sym">{symbol}</b>
         <span className="preview-co">{company}</span>
@@ -713,6 +732,28 @@ function AttentionView({
  * contributions that produced the level. Nothing here is generated: each line is a
  * `ReasonCode.detail` the engine emitted when it made the decision.
  */
+/**
+ * A one-sentence explanation of a term a first-time reader will not know.
+ *
+ * Used only for the vocabulary this product actually invents — attention, confidence,
+ * source standing, coverage — never for words like "price" that explain themselves. It is
+ * a button rather than a hover target so that a keyboard reader and a touch reader can
+ * both reach it; the panel is shown by `:focus-within`, so there is no open state to
+ * manage and none to leave stuck.
+ */
+function Hint({ term, children }: { term: string; children: string }) {
+  return (
+    <span className="hint">
+      <button type="button" className="hint-dot" aria-label={`What does ${term} mean?`}>
+        <span aria-hidden="true">i</span>
+      </button>
+      <span className="hint-body" role="tooltip">
+        {children}
+      </span>
+    </span>
+  );
+}
+
 function AttentionRow({
   group,
   focus,
@@ -737,8 +778,12 @@ function AttentionRow({
       <div className="attn-main">
         <div className="attn-head">
           <span className="attn-level" data-tone={assessment.attention}>
-            {assessment.attention.replace(/_/g, " ").toLowerCase()}
+            {attentionLabel(assessment.attention)}
           </span>
+          <Hint term="attention">
+            How much this development deserves your time, judged from the evidence — not
+            from the size of the price move.
+          </Hint>
           <button type="button" className="attn-open" onClick={() => onOpen(symbol)}>
             <span className="tile-sym">{symbol}</span>
             <span className="tile-co">{company}</span>
@@ -751,9 +796,17 @@ function AttentionRow({
         <p className="attn-axes">
           <span>
             Confidence · <b>{assessment.confidence.toLowerCase()}</b>
+            <Hint term="confidence">
+              How strongly the evidence we have supports this reading. It is separate from
+              how much the development matters.
+            </Hint>
           </span>
           <span>
             Source · <b>{assessment.source_standing_label}</b>
+            <Hint term="source standing">
+              Who reported it. An exchange filing is the company itself; an established
+              outlet is a newsroom we recognise.
+            </Hint>
           </span>
           {/* Across the development, counted by the backend so a grouped card cannot
               overstate its corroboration. Omitted at zero: our own market measurement has
@@ -817,7 +870,7 @@ function AttentionRow({
                     noise to hide. */}
                 {item.assessment.attention !== assessment.attention && (
                   <span className="badge" data-tone={item.assessment.attention}>
-                    {item.assessment.attention.replace(/_/g, " ").toLowerCase()}
+                    {attentionLabel(item.assessment.attention)}
                   </span>
                 )}
                 <span className="upd-what">{item.assessment.description}</span>
@@ -845,7 +898,7 @@ function AttentionRow({
             </ol>
             <p className="why-verdict">
               Scored {assessment.score} by {assessment.scoring_version} →{" "}
-              <b>{assessment.attention.replace(/_/g, " ").toLowerCase()}</b>, at{" "}
+              <b>{attentionLabel(assessment.attention)}</b>, at{" "}
               <b>{assessment.confidence.toLowerCase()}</b> confidence.
             </p>
             {groupedEvidence(group).length > 0 && (
@@ -1051,10 +1104,13 @@ function Tile({
       <a className="tile-link" href={`/company?symbol=${encodeURIComponent(row.symbol)}`}>
         <span className="rank">{rank}</span>
         <span className="tile-sym">{row.symbol}</span>
+        {/* The verdict sits with the name, because it is the reason this card exists.
+            Price follows the development rather than leading it (D2). */}
+        <span className="badge" data-tone={badge.tone}>
+          {badge.label}
+        </span>
         <span className="tile-co">{row.company}</span>
       </a>
-
-      <PriceStatusLine status={status} symbol={row.symbol} />
 
       <div className="tile-body">
         {shown ? (
@@ -1062,14 +1118,16 @@ function Tile({
         ) : (
           <p className="tile-dev none">{row.detail || "Nothing recorded for this company yet."}</p>
         )}
+      </div>
 
-        <div className="tile-stats">
-          <span>{shown ? whenText(shown.occurred_at) : "—"}</span>
-          {shown && <span>{shown.corroboration.summary}</span>}
-          {row.newCount > 0 && <span>{row.newCount} new</span>}
-          {row.coverageTier === "LIMITED" && <span>limited coverage</span>}
-          {row.state === "unable" && <span>sources unavailable</span>}
-        </div>
+      <PriceStatusLine status={status} symbol={row.symbol} />
+
+      <div className="tile-stats">
+        <span>{shown ? whenText(shown.occurred_at) : "—"}</span>
+        {shown && <span>{shown.corroboration.summary}</span>}
+        {row.newCount > 0 && <span>{row.newCount} new</span>}
+        {row.coverageTier === "LIMITED" && <span>limited coverage</span>}
+        {row.state === "unable" && <span>sources unavailable</span>}
       </div>
 
       {/* Expanding reads more of the record in place. The board is where a reader decides
@@ -1104,10 +1162,9 @@ function Tile({
       )}
 
       <div className="tile-foot">
-        <span className="badge" data-tone={badge.tone}>
-          {badge.label}
-        </span>
-        {shown && <span className="badge soft">{shown.confidence.toLowerCase()} conf</span>}
+        {shown && (
+          <span className="badge soft">{shown.confidence.toLowerCase()} confidence</span>
+        )}
         {shown && (
           <span className="badge standing" data-standing={shown.source_standing}>
             {shown.source_standing_label}
@@ -1281,28 +1338,28 @@ function Strip({ page, rows }: { page: ReviewPage; rows: CompanyRow[] }) {
     <div className="strip">
       <div className="strip-inner">
         <span>
-          <b>WATCHING</b> {rows.length}
+          <b>Watching</b> {rows.length}
         </span>
         <span>
-          <b>NEW</b> <span className={page.attention_count > 0 ? "ok" : ""}>{page.attention_count}</span>
+          <b>New</b> <span className={page.attention_count > 0 ? "ok" : ""}>{page.attention_count}</span>
         </span>
         <span>
-          <b>SIGNIFICANT</b> <span className={significant > 0 ? "ok" : ""}>{significant}</span>
+          <b>Needs you</b> <span className={significant > 0 ? "ok" : ""}>{significant}</span>
         </span>
         <span>
-          <b>DISCLOSURES</b> {disclosures}
+          <b>Filings</b> {disclosures}
         </span>
         <span>
-          <b>ALERTS</b> <span className={alerts > 0 ? "ok" : ""}>{alerts}</span>
+          <b>Your alerts</b> <span className={alerts > 0 ? "ok" : ""}>{alerts}</span>
         </span>
         <span>
-          <b>QUIET</b> {quiet}
+          <b>Quiet</b> {quiet}
         </span>
         <span>
-          <b>DEGRADED</b> <span className={degraded > 0 ? "bad" : ""}>{degraded}</span>
+          <b>Not checked</b> <span className={degraded > 0 ? "bad" : ""}>{degraded}</span>
         </span>
         <span>
-          <b>WINDOW FROM</b>{" "}
+          <b>Since</b>{" "}
           {page.previous_checkpoint ? whenText(page.previous_checkpoint) : "first review"}
         </span>
       </div>
@@ -1312,10 +1369,17 @@ function Strip({ page, rows }: { page: ReviewPage; rows: CompanyRow[] }) {
 
 function Skeletons() {
   return (
-    <div className="rows" aria-busy="true">
-      <div className="skeleton" />
-      <div className="skeleton" />
-      <div className="skeleton" />
+    <div className="loading" aria-busy="true">
+      <p className="visually-hidden" role="status">
+        Loading what changed since your last review.
+      </p>
+      {/* Shaped like the hero and the first two developments, so the page does not
+          reflow when the answer arrives — and so nothing here can be misread as a
+          count of zero. */}
+      <div className="skeleton skeleton-lead" />
+      <div className="skeleton skeleton-hero" />
+      <div className="skeleton skeleton-card" />
+      <div className="skeleton skeleton-card" />
     </div>
   );
 }

@@ -101,16 +101,17 @@ export default function Assistant({ symbol }: { symbol?: string }) {
         ref={opener}
         className="assistant-open"
         aria-expanded={open}
+        aria-label={open ? "Close the assistant" : symbol ? `Ask about ${symbol}` : "Ask about your watchlist"}
         onClick={() => (open ? close() : setOpen(true))}
       >
-        {open ? "Close" : "Ask"}
+        {open ? "Close" : symbol ? `Ask about ${symbol}` : "Ask about your watchlist"}
       </button>
 
       {open && (
         <aside className="assistant" role="dialog" aria-label="Ask about your watchlist">
           <div className="assistant-head">
             <div>
-              <h2>Ask</h2>
+              <h2>{symbol ? `Ask about ${symbol}` : "Ask about your watchlist"}</h2>
               <p>
                 {symbol
                   ? `Answered from what we have assessed for ${symbol}.`

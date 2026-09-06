@@ -184,7 +184,7 @@ export function disputedBy(
 /** The badge a row wears. Copied from the engine, never computed here. */
 export function rowBadge(row: CompanyRow): { label: string; tone: string } {
   if (row.headline) {
-    return { label: `${row.headline.attention.replace(/_/g, " ").toLowerCase()}`, tone: row.headline.attention };
+    return { label: attentionLabel(row.headline.attention), tone: row.headline.attention };
   }
   if (row.state === "unable") return { label: "can't evaluate", tone: "UNABLE_TO_EVALUATE_RELIABLY" };
   if (row.state === "new") return { label: "just added", tone: "NEW" };
@@ -273,6 +273,29 @@ export function groupByKind(assessments: Assessment[]): KindGroup[] {
  * always spelled out beside it, because a badge whose meaning is carried by colour alone
  * is a badge half the readers cannot use.
  */
+/**
+ * An attention level in the reader's words.
+ *
+ * Presentation only: the five levels, their meaning and their order are the engine's and
+ * are untouched. `UNABLE_TO_EVALUATE_RELIABLY` in particular must never read like a quiet
+ * verdict — "we could not look" and "we looked and it was quiet" are different findings
+ * (D15), so they get different words rather than a shared shrug.
+ */
+export function attentionLabel(attention: Assessment["attention"]): string {
+  switch (attention) {
+    case "HIGH":
+      return "high";
+    case "MEDIUM":
+      return "medium";
+    case "LOW":
+      return "low";
+    case "NO_MEANINGFUL_CHANGE":
+      return "quiet";
+    case "UNABLE_TO_EVALUATE_RELIABLY":
+      return "couldn't check";
+  }
+}
+
 export function standingTone(standing: Assessment["source_standing"]): string {
   return standing;
 }
