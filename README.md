@@ -58,8 +58,8 @@ packages/web       Astro + React islands        packages/mobile   Expo proof
 ```
 
 `core/` imports nothing from `api/`. Forty-five architectural decisions are recorded in
-[`DESIGN.md`](DESIGN.md); the product thesis is in [`VISION.md`](VISION.md); where the
-build actually is, including what is unbuilt, is in [`docs/status.md`](docs/status.md).
+[`DESIGN.md`](DESIGN.md); and the product thesis is in
+[`VISION.md`](VISION.md), which is candid about what is unbuilt and what is unmeasured.
 
 ## Running it
 

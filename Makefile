@@ -8,8 +8,6 @@ help: ## Show this help
 install: ## Install all dependencies
 	@for pkg in $(PACKAGES); do $(MAKE) -C $$pkg install || exit 1; done
 
-skills-install: ## Restore project skills from skills-pack.lock.json
-	skills-pack update; skills-pack upgrade
 
 build: ## Build and type-check every package
 	@for pkg in $(PACKAGES); do $(MAKE) -C $$pkg build || exit 1; done
@@ -50,4 +48,4 @@ clean: ## Remove build artifacts
 distclean: ## Remove build artifacts and installed dependencies
 	@for pkg in $(PACKAGES); do $(MAKE) -C $$pkg distclean || exit 1; done
 
-.PHONY: help install skills-install build test lint format run run-api run-web run-mobile api-types llm-harness load-test clean distclean
+.PHONY: help install build test lint format run run-api run-web run-mobile api-types llm-harness load-test clean distclean

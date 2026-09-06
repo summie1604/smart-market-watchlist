@@ -18,10 +18,15 @@ _ASSIGNMENT = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?
 
 
 def _repo_root() -> Path:
-    """Walk up until the marker file that identifies the repository root."""
+    """Walk up until the marker file that identifies the repository root.
+
+    ``tsconfig.base.json`` is the marker because it exists only at the root — every
+    package has its own ``Makefile`` and several have a ``README.md`` — and because the
+    frontend build cannot succeed without it, so it cannot quietly disappear.
+    """
     for directory in [Path.cwd(), *Path(__file__).resolve().parents]:
         for candidate in [directory, *directory.parents]:
-            if (candidate / "AGENTS.md").is_file():
+            if (candidate / "tsconfig.base.json").is_file():
                 return candidate
     return Path.cwd()
 

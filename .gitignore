@@ -47,3 +47,15 @@ gemini.env
 # ...but the template that documents them is meant to be read. Without this negation the
 # patterns above swallow it and a fresh clone gets no setup reference at all.
 !.env.example
+
+# Local tooling and working notes — not part of what is needed to run the product.
+# Everything here still exists on disk; it is simply not published.
+.claude/
+AGENTS.md
+CLAUDE.md
+CHANGELOG.md
+docs/
+skills-lock.json
+skills-pack.lock.json
+# Kept on disk in case Fly is ever used; Render is what deploys this.
+fly.toml
