@@ -1,8 +1,171 @@
 # Status
 
-**Where the build is:** scheduled ingestion complete and reviewed. The system now
-observes unattended, so *"what changed while you were gone"* is operationally true and
-not merely implemented. Lifecycle and generated summaries are not built.
+**Where the build is:** the web product is demo-ready and the platform foundation has now
+been validated. Scheduled ingestion, news, market data, exchange disclosures, accounts and
+per-user review windows are complete; web and a thin native proof consume the same `/v1`
+contract.
+
+## Attention hierarchy on the review page
+
+- **The answer is stated, not counted.** "While you were away" now names the developments
+  that demand attention — level, symbol, company, when, headline, one why-line and a link
+  into the full card — instead of reporting a bare count and leaving the reader to hunt.
+  Selection reuses `demandingDevelopments()` over the grouped, server-ordered items; there
+  is no second ranking (D26, D43).
+- **A reader's own level keeps its own block.** Triggered watch points read as "You asked
+  to be told" above operational counters, because a level the reader set is a distinct
+  reason for attention and is never folded into development grouping (D37, D43).
+- **Coverage is named, not numeric.** Companies that could not be evaluated are listed by
+  symbol with the reason silence is ours and not the market's (D15).
+- **Contrast and case:** `--faint` and `--quiet` were raised to 5.62:1 and 5.10:1 on panel;
+  hero and control headings are sentence case rather than mono uppercase.
+- **Counters are chrome.** Below 40rem the terminal strip scrolls as one row instead of
+  wrapping to three, which moved the answer 75px up the phone viewport without dropping a
+  single count.
+- **Orientation and answer are separate.** A compact view-context bar names the view, the
+  review window and the action that closes it; the hero below answers what changed. The
+  checkpoint sentence is stated once, in the bar.
+
+## Platform and validation foundation
+
+- **One versioned API:** product routes are under `/v1`; Pydantic/OpenAPI is the wire source
+  and a committed generated TypeScript package is shared by web and mobile (D33).
+- **Thin mobile proof:** the Expo app loads the real Needs Attention review in canonical
+  server order, opens company detail, shows evidence/coverage/contradiction state and
+  completes the same server-owned review cutoff. Its iOS production bundle was generated
+  successfully. It deliberately has no complete login, secure token storage or broader
+  app navigation.
+- **Measured local workload:** 50 memberships over 500 shared assessments assembled at
+  0.18 ms p50 / 0.19 ms p95; the SQLite-backed path was 13.00 ms p50 / 14.65 ms p95;
+  20-thread pure-domain observation was 5,000 reviews/s; 500 rule extractions plus grounding
+  ran at 61,991 articles/s; 252-session three-series chart work took 0.49 ms; process peak
+  RSS was 97.5 MiB. These are local bounded-path measurements, not deployed API capacity.
+  Network time, full-cycle ingestion and SQLite write contention remain unmeasured.
+- **Price reads are network-free:** scheduled market ingestion upserts one year of EOD bars
+  by symbol and session; `/v1/prices` reads that store. A fresh database returns an honest
+  empty chart until the first market run rather than fetching during the page request.
+- **Reproducible LLM harness:** provider/model/prompt, raw output, validated result, fallback,
+  latency, tokens, cost inputs, schema failure, unsupported fields and attribution failure
+  are retained in a database isolated from product state. The 21-case rules baseline is
+  100% precision and 64.3% recall under the current subject-safety gate; 4/4 deterministic
+  contradiction cases pass.
+- **Live model result:** Gemini 3.6 Flash returned explicit quota exhaustion on all 21 calls,
+  so model quality, token use and cost were not measurable. The separately named
+  Gemini-to-rules pipeline fell back on all 21 and matched the rules result. This proves the
+  coverage/fallback path, not Gemini extraction quality.
+
+- **Scheduled ingestion is complete.** The system observes unattended; nobody calls an
+  endpoint for *"what changed while you were gone"* to be true.
+- **News, market observations and disclosures share one assessment path** — one engine,
+  one reason-code ledger, one persistence model.
+- **User-specific review windows work.** Two accounts watching one company read the same
+  underlying analysis and see different reviews.
+- **Gemini is quota-limited** — 20 requests per model per day on the free tier, so most
+  live articles are handled by the fallback.
+- **The rule fallback is separately provenanced and fails closed on uncertain subjects.**
+  It never borrows the model's identity, and it declines rather than guess who an article
+  is about.
+- **Lifecycle and generated summaries remain unbuilt.**
+- **The interface opens on the Watchlist.** Each followed company has a compact card with its
+  latest stored EOD price, daily adjusted movement and short trace alongside the latest
+  relevant development; it links to a dedicated company page. The attention view remains the
+  server-ranked answer for what is new since the last completed review (D26). Company detail
+  keeps the full aligned price comparison and event evidence, with news and market events
+  ordered by attention then recency and expandable only into source-backed explanation.
+- **A watchlist entry can say what it is for.** Adding a company asks why you follow it,
+  what you want to watch for, and which focus areas apply — all optional. Only the focus
+  tags do anything, and only as a filter and an annotation. **A HIGH is never hidden by a
+  focus filter**; it is shown marked *outside your focus — we think it matters anyway*, and
+  the count of what the focus did narrow away is stated rather than silently applied (D27).
+  The focus chips appear only on *Needs attention*, because focus narrows developments and
+  the watchlist lists companies — on the watchlist the control did nothing at all.
+- **Price context lives inside a company's detail.** Daily corporate-action-adjusted closes
+  for the company, its sector index and the broad market, restricted to the sessions all
+  three share and rebased to 100 — computed in the backend, drawn by the client (D28). A
+  benchmark that has stopped updating is excluded and named rather than silently truncating
+  the company's own range. Nothing is interpolated.
+- **A contradicted report is marked and linked, never deleted.** Both records stay
+  readable, the phrase the dispute rests on is quoted, and the note says plainly that a
+  dispute lowers how sure we are rather than how much something matters (D29).
+- **The board adapts to the width it has, not to a guessed device.** Watchlist cards use
+  `auto-fill` with a comfortable minimum, so a phone, a split screen and a half-width
+  window all reach a single stacked column on their own; two columns arrive around 900px
+  and three only past ~1300px. The previous fixed breakpoint put three cramped columns on
+  anything wider than 832px.
+- **Cards show the session in full**: last close, the move in rupees *and* percent under
+  one sign, the day's high–low range and volume — all from the same stored bar, all
+  omitted rather than substituted where the provider gave nothing.
+- **The watchlist sorts locally** by gainers, losers, largest move, A–Z or recently added
+  (D38). No request is made to sort, and it never touches the canonical ordering of
+  developments. A company with no stored close sorts last, never as a flat move.
+- **Company detail carries a timeline and an alert history.** The timeline re-reads the
+  assessments already loaded, newest first, and says plainly that adjacency in time is not
+  causation. The alert list is the watch-point records themselves — no second copy, and no
+  severity field, because a level the reader chose has none we could honestly assign.
+- **Watch points can be a percentage move** measured from the price frozen when the point
+  was set (D39) — *"down 5% from ₹1,322"*. A baseline that followed the price would make a
+  slow decline unreachable.
+- **The whole watchlist card is one link.** A click anywhere in the box that is not
+  another control opens that company, and because it is a real `<a>` rather than a click
+  handler, middle-click, ctrl-click and "open in new tab" all work and the destination
+  shows on hover. The trace, the expander, the expanded text and remove sit above the
+  stretched overlay and keep their own behaviour.
+- **Cards answer "is this worth opening?" in place.** *Why this is here* expands the full
+  headline, the engine's reason codes and the publishers behind it without leaving the
+  board, and the end-of-day trace is readable rather than decorative: pointing at it — or
+  arrowing along it with the keyboard — names the stored session and its close. The
+  position maps to the nearest **stored** session, never to a value between two of them.
+- **A reader can mark "watch out for this" on a company** (D37): a price level and a note.
+  The scheduled cycle settles it against stored end-of-day closes and a crossing appears at
+  the top of the board on the next visit — pull-based, never pushed, and worded as
+  *"closed ₹1,405 on 2026-09-08"* rather than "hit ₹1,400". A level already reached is
+  refused rather than fired instantly; a triggered level announces once and stays on the
+  record after it is acknowledged.
+- **Responsive and keyboard-navigable.** One column on a phone, three on a wide screen; the
+  detail is a labelled dialog that takes focus on open, closes on Escape and returns focus
+  where it came from. No meaning is carried by colour alone — every attention level is
+  spelled out in words beside its badge.
+- **The assistant drawer closes on every surface.** On a phone the sheet covers the
+  floating button and there is no Escape key, so the panel carries its own close control;
+  closing returns focus to the button that opened it, and the transcript is a live region
+  so answers are announced rather than only drawn.
+- **An assistant drawer answers questions on both surfaces** (D40) — the watchlist ("what
+  needs my attention", "biggest movers", "which alerts triggered", "any new disclosures")
+  and one company, using the company in view as context so "why did this fall?" needs no
+  ticker. It composes from records the engine already produced: **no model, no fetch, no
+  second engine**, and every statement about the world names the records behind it. The
+  company path runs the same code `/explain` runs.
+- **Company detail answers a bounded question about the company** (D35). Not a chat box:
+  a fixed set of questions — what changed, why it was surfaced, what we could not see, who
+  reported it, what the market did, what has been disputed — answered by composing stored
+  assessments, reason codes, coverage records and cited evidence. **No model is in the
+  answer path**, a question never triggers ingestion or an external fetch, every statement
+  about the company names the events it came from, and advice or prediction is refused
+  before anything is looked up. "I don't have enough evidence" is a normal outcome with a
+  stated reason, not an error.
+- **Every development shows what kind of source it came from** (D36) — exchange filing,
+  established outlet, press release, unrecognised publisher, or our own measurement — as a
+  third badge beside attention and confidence. It is descriptive, not a rating:
+  "unrecognised" means absent from a curated list of 60-odd publishers, never
+  untrustworthy. A story carried only by unrecognised publishers scores one point lower;
+  a single recognised publisher, or independent corroboration, clears it.
+- **News with no observed market reaction is nudged down by one point**, and only where the
+  market was actually consulted. Worded as an observation about the market rather than a
+  judgement about the report, and weak by design: price is often the slowest signal, so a
+  quiet market must never be able to bury a development on its own.
+- **A company's record is grouped by kind, then by type.** Exchange disclosures, market
+  observations and news are different kinds of thing, and news splits again by the engine's
+  own event types (Expansion, Financial Result Updates, Legal, and so on). A long record
+  read as one undifferentiated stream is unreadable; a filing and a rumour should not look
+  alike.
+- The frontend filters and formats; ranking, confidence, coverage, the rebasing behind the
+  chart and every contradiction decision are the backend's, copied verbatim.
+- **The demo opens without a login.** Anonymous callers resolve to one persistent
+  server-owned account (`DEMO_MODE`, on by default), so the dashboard is immediately
+  usable while watchlists and checkpoints stay real. Authentication is bypassed, not
+  removed: a real session still wins, and `DEMO_MODE=off` restores the wall exactly.
+  **Any deployment reachable by other people must set it off** — in demo mode every
+  visitor shares one account's state.
 
 ## What Step 0 established
 
@@ -132,8 +295,8 @@ by a headline rule — they stand on evidence that was not attributed by headlin
   and a Secure cookie would silently never be sent. A TLS deployment must set it.
 - **No password reset, email verification, or account deletion.** Deliberately out of
   scope (D8); an account is currently unrecoverable if its password is lost.
-- **Ingestion is still manual.** `POST /ingest` — the system observes only when asked, so
-  "while you were gone" depends on someone having run it.
+- **Ingestion was still manual** at the end of Step 4. *(Closed by scheduled ingestion —
+  kept here because it is what Step 4 itself did not establish.)*
 
 ## What Step 2 established
 
@@ -249,38 +412,72 @@ is therefore impossible in one day, which is why the evaluation spans three sibl
 models. A paid tier would collapse this to one model and make the figures directly
 comparable across runs.
 
-**Live throughput is unmeasured.** The evaluation is 21 articles. A full ingest across the
+**End-to-end live throughput is unmeasured.** The evaluation is 21 articles. A full ingest across the
 curated universe produces ~160 articles per run, far beyond the daily free-tier budget, so
 production runs currently fall back to the rule extractor for most articles. The fallback
 is real and separately provenanced, but the model's live contribution is small.
 
-## Next — step 4, user state
+## Recommended next
 
-Auth, watchlists, review checkpoints, the frozen review window (D7, D8). This is what
-turns a list of assessments into *"what changed since you last looked"*, which is the
-product's actual claim.
+Do **not** introduce Postgres, Redis, queues or separate workers yet. First measure one full
+500-evidence live cycle including provider waits and SQLite writes, then exercise concurrent
+writers. The present measurements show no infrastructure bottleneck on the read/domain path.
 
-Then: lifecycle and summaries (E, F) → frontend. Scenario letters refer to the demo matrix in `DESIGN.md`.
+The native proof justifies validating the flow on a physical phone, but not building the
+complete mobile product yet. Secure token storage and rotation plus a compact mobile review
+projection come first. Retry one model through all 21 cases when quota is available; until
+then the extraction fallback, not model quality, remains the product limit.
+
+Lifecycle (D16) and generated summaries (D6) remain unbuilt product work.
 
 ## Known gaps in what exists
 
 - ~~**Ingestion is manual.**~~ **Closed** — the scheduler runs unattended.
 - **The curated universe is 8 companies**, not 50. Everything else is `LIMITED` and says
   so. Depth over breadth (D19).
-- **`save_run` is called after the assessment loop**, so a mid-loop persistence failure
-  would leave assessments without a run record. Accepted for now; it belongs with the
-  scheduled ingestion in step 3, where a crash mid-run becomes likely.
-- **The UI is deliberately ugly** and stays that way through step 5.
+- ~~**`save_run` is called after the assessment loop.**~~ **Closed** — each pipeline now
+  records its run before anything it produces can persist, so an assessment cannot exist
+  without the run that explains its coverage.
+- **Watch points are end-of-day only.** A level crossed and recovered inside one session
+  is never seen, and only price levels are supported — a note saying "watch out for a
+  regulatory ruling" is a reminder to its author, not something the system checks.
+- **The publisher registry is curated and incomplete.** An outlet we have not catalogued
+  is labelled unrecognised, which is accurate about us and unfair to them. Corroboration is
+  the route by which a real story from an uncatalogued outlet still reaches the reader.
+- **The explainer's intent vocabulary is curated**, so an unusual phrasing lands on
+  "I can only answer from what we have already assessed" with suggestions rather than
+  being understood. Widening it is curation work, not model work.
+- **Interest tags are a fixed curated vocabulary.** Free text is captured and kept for the
+  reader, but only the curated tags can be explained, so only they filter.
+- **Contradiction recall is low by construction.** Four gates must all pass, so quiet
+  corrections and disputes phrased in different words are missed. The false-negative rate
+  is unmeasured.
+- **Sector index membership is hand-curated** and drifts. Two of the NSE sector indices the
+  price feed serves stopped updating in July 2026; they are excluded from the comparison
+  and named, which is visible in the demo.
+
+## What is measured, and what is not
+
+**Extraction is measured.** 21 hand-labelled articles, `make llm-harness`: the rule
+extractor reaches 100% precision and 64.3% recall; Gemini reached 100%/100% across three
+sibling flash models. Fixture performance, and the report says so.
+
+**The attention engine is not.** 393 passing tests prove the implementation matches its
+specification — not that the ranking is *useful*. The harness that would measure it exists
+and is tested (`make attention-eval`, `evaluation/attention.py`); its labelled set is
+deliberately empty, because inventing labels produces a number that looks like evidence
+and is not. Filling it in requires reading real assessments and recording what a careful
+reader would have wanted.
 
 ## Risks, reordered
 
 1. ~~No authoritative disclosure source works.~~ **Closed** by Step 0 — with the caveat
    that one session is not a reliability guarantee. The same caveat now applies to
    `yfinance`: it worked across 11 symbols in one session. That is not reliability.
-2. **LLM extraction quality on real news** — the next unproven thing, and it fails
-   quietly rather than loudly. Validate on real articles in step 2 before building on it.
-3. **Event linking tuning** — too conservative and scenario D shows duplicates, which is
-   the aggregator behaviour the product claims to fix.
+2. **Model extraction at live volume** remains constrained by quota. Provider failure is
+   now loud and measured, but most live volume still takes the lower-recall rule fallback.
+3. **End-to-end ingestion capacity and SQLite contention** have not been measured at the
+   stated 500-evidence workload; the fast pure-domain measurements do not answer either.
 4. **No convincing RESOLVED example** may occur in the live window; seeded fixtures
    (D18) are the mitigation and must be built from step 2, not at the end.
 5. **Frontend time** — J2 and J4 are non-negotiable, J8 search drops first. Less acute

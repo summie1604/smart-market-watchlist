@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-PACKAGES := packages/backend packages/web
+PACKAGES := packages/backend packages/shared packages/web packages/mobile
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -32,10 +32,22 @@ run-api: ## Run the API only
 run-web: ## Run the web dev server only
 	$(MAKE) -C packages/web run
 
+run-mobile: ## Run the Expo mobile proof only
+	$(MAKE) -C packages/mobile run
+
+api-types: ## Regenerate the shared TypeScript API contract
+	$(MAKE) -C packages/backend api-types
+
+llm-harness: ## Run the reproducible extraction evaluation baseline
+	$(MAKE) -C packages/backend llm-harness
+
+load-test: ## Measure the current architecture against stated local targets
+	$(MAKE) -C packages/backend load-test
+
 clean: ## Remove build artifacts
 	@for pkg in $(PACKAGES); do $(MAKE) -C $$pkg clean || exit 1; done
 
 distclean: ## Remove build artifacts and installed dependencies
 	@for pkg in $(PACKAGES); do $(MAKE) -C $$pkg distclean || exit 1; done
 
-.PHONY: help install skills-install build test lint format run run-api run-web clean distclean
+.PHONY: help install skills-install build test lint format run run-api run-web run-mobile api-types llm-harness load-test clean distclean

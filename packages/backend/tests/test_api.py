@@ -32,7 +32,7 @@ def test_health_reports_ok(client) -> None:
 
 def test_source_health_is_present_even_with_no_assessments(client) -> None:
     """An empty store must still be able to say whether we have looked."""
-    body = client.get("/assessments").json()
+    body = client.get("/v1/assessments").json()
 
     assert body["count"] == 0
     assert body["assessments"] == []
@@ -52,7 +52,7 @@ def test_assessments_arrive_in_canonical_order(client, monkeypatch) -> None:
         evidence = make_evidence(category=category, ref=f"ref-{category}")
         store.save(assess(make_event(evidence), coverage()))
 
-    returned = client.get("/assessments").json()["assessments"]
+    returned = client.get("/v1/assessments").json()["assessments"]
 
     # A material disclosure for a curated company under full coverage outranks a
     # routine one; the API returns them in that order so the client need not decide.
@@ -86,7 +86,7 @@ def test_health_covers_every_source_family_that_has_run(client) -> None:
         )
     )
 
-    body = client.get("/assessments").json()
+    body = client.get("/v1/assessments").json()
 
     assert body["source_health"] is not None, "a news run is a run"
     assert body["source_health"]["healthy"] is True
@@ -94,7 +94,7 @@ def test_health_covers_every_source_family_that_has_run(client) -> None:
 
 
 def test_health_is_none_only_when_nothing_has_ever_run(client) -> None:
-    body = client.get("/assessments").json()
+    body = client.get("/v1/assessments").json()
 
     assert body["source_health"] is None
     assert body["runs"] == []

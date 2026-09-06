@@ -15,15 +15,17 @@ import contextlib
 import secrets
 import sqlite3
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 from ..core.userstate import IssuedReview, Membership, Session, User
+from ..core.watchpoints import MAX_NOTE, WatchDirection, WatchPoint
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 __all__ = ["SESSION_LIFETIME", "SqliteUserStore"]
@@ -64,6 +66,28 @@ _MIGRATIONS: tuple[str, ...] = (
     );
     CREATE INDEX idx_issued_user ON issued_reviews (user_id, issued_at DESC);
     """,
+    """
+    ALTER TABLE memberships ADD COLUMN reason TEXT NOT NULL DEFAULT '';
+    ALTER TABLE memberships ADD COLUMN watch_for TEXT NOT NULL DEFAULT '';
+    ALTER TABLE memberships ADD COLUMN tags TEXT NOT NULL DEFAULT '';
+    """,
+    """
+    CREATE TABLE watch_points (
+        point_id        TEXT PRIMARY KEY,
+        user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        symbol          TEXT NOT NULL,
+        level           REAL NOT NULL,
+        direction       TEXT NOT NULL,
+        note            TEXT NOT NULL DEFAULT '',
+        created_at      TEXT NOT NULL,
+        created_close   REAL,
+        triggered_on    TEXT,
+        triggered_close REAL,
+        acknowledged_at TEXT
+    );
+    CREATE INDEX idx_watch_points_user ON watch_points (user_id, symbol);
+    CREATE INDEX idx_watch_points_open ON watch_points (triggered_on);
+    """,
 )
 
 
@@ -75,12 +99,17 @@ class SqliteUserStore:
         self._hasher = PasswordHasher()
         self._migrate()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextlib.contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self._path)
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA foreign_keys=ON")
         connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _migrate(self) -> None:
         with self._connect() as connection:
@@ -156,6 +185,42 @@ class SqliteUserStore:
         with contextlib.suppress(Exception):  # the mismatch is the point
             self._hasher.verify(self._hasher.hash("timing-equaliser"), "wrong")
 
+    def demo_user(self, email: str = "demo@example.com") -> User:
+        """The persistent account a login-free demo resolves to.
+
+        ``example.com`` is IANA-reserved, so the address is well-formed and belongs to
+        nobody. Registering it is refused by the unique constraint — the demo account
+        cannot be taken over by claiming its address.
+
+        Server-owned and created on first use, with an unusable password hash rather than
+        a known one — nothing should be able to sign in *as* the demo user through the
+        normal credential path. Its watchlist and checkpoint are ordinary rows, so
+        "since you last checked" is genuinely real rather than simulated.
+        """
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM users WHERE email = ? COLLATE NOCASE", (email,)
+            ).fetchone()
+            if row is None:
+                user = User(user_id=uuid.uuid4().hex, email=email, created_at=datetime.now(UTC))
+                connection.execute(
+                    "INSERT INTO users (user_id, email, password_hash, created_at) VALUES (?,?,?,?)",
+                    (
+                        user.user_id,
+                        user.email,
+                        # Deliberately not a hash of anything: argon2 verification of any
+                        # candidate against this fails, so the demo account has no password.
+                        "demo-account-has-no-password",
+                        user.created_at.isoformat(),
+                    ),
+                )
+                return user
+        return User(
+            user_id=row["user_id"],
+            email=row["email"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
     # --- sessions ---------------------------------------------------------
 
     def create_session(self, user_id: str, now: datetime | None = None) -> Session:
@@ -204,28 +269,74 @@ class SqliteUserStore:
 
     # --- watchlist --------------------------------------------------------
 
-    def add_membership(self, user_id: str, symbol: str) -> Membership:
-        """Add a company. Idempotent — re-adding keeps the original observation boundary.
+    def add_membership(
+        self,
+        user_id: str,
+        symbol: str,
+        reason: str = "",
+        watch_for: str = "",
+        tags: tuple[str, ...] = (),
+        added_at: datetime | None = None,
+    ) -> Membership:
+        """Add a company, with what the user said they were watching for.
 
-        Keeping ``added_at`` on conflict matters: bumping it would silently discard the
-        history the user has already been shown.
+        ``added_at`` is injectable for fixtures, which need a watchlist that predates the
+        records it is meant to surface — ``added_at`` is the observation boundary, so a
+        membership created after an assessment correctly hides it. Live callers never pass
+        it.
+
+        Idempotent — re-adding keeps the original observation boundary. Keeping
+        ``added_at`` on conflict matters: bumping it would silently discard the history
+        the user has already been shown.
+
+        Interests are written on the way in and updated only when something was supplied.
+        Re-adding a company without them must not erase what the user wrote the first
+        time, and every field is optional by design: the questions are worth asking and
+        never worth blocking on.
         """
-        membership = Membership(user_id=user_id, symbol=symbol, added_at=datetime.now(UTC))
+        membership = Membership(
+            user_id=user_id,
+            symbol=symbol,
+            added_at=added_at or datetime.now(UTC),
+            reason=reason.strip(),
+            watch_for=watch_for.strip(),
+            tags=tags,
+        )
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO memberships (user_id, symbol, added_at) VALUES (?,?,?)
+                INSERT INTO memberships (user_id, symbol, added_at, reason, watch_for, tags)
+                VALUES (?,?,?,?,?,?)
                 ON CONFLICT(user_id, symbol) DO NOTHING
                 """,
-                (membership.user_id, membership.symbol, membership.added_at.isoformat()),
+                (
+                    membership.user_id,
+                    membership.symbol,
+                    membership.added_at.isoformat(),
+                    membership.reason,
+                    membership.watch_for,
+                    _pack_tags(tags),
+                ),
             )
+            if membership.reason or membership.watch_for or tags:
+                connection.execute(
+                    """
+                    UPDATE memberships SET reason = ?, watch_for = ?, tags = ?
+                    WHERE user_id = ? AND symbol = ?
+                    """,
+                    (
+                        membership.reason,
+                        membership.watch_for,
+                        _pack_tags(tags),
+                        user_id,
+                        symbol,
+                    ),
+                )
             row = connection.execute(
-                "SELECT added_at FROM memberships WHERE user_id = ? AND symbol = ?",
+                "SELECT * FROM memberships WHERE user_id = ? AND symbol = ?",
                 (user_id, symbol),
             ).fetchone()
-        return Membership(
-            user_id=user_id, symbol=symbol, added_at=datetime.fromisoformat(row["added_at"])
-        )
+        return _to_membership(row)
 
     def remove_membership(self, user_id: str, symbol: str) -> bool:
         """Remove a company. ``False`` when it was not there — not an error."""
@@ -240,14 +351,123 @@ class SqliteUserStore:
             rows = connection.execute(
                 "SELECT * FROM memberships WHERE user_id = ? ORDER BY symbol", (user_id,)
             ).fetchall()
-        return [
-            Membership(
-                user_id=r["user_id"],
-                symbol=r["symbol"],
-                added_at=datetime.fromisoformat(r["added_at"]),
+        return [_to_membership(r) for r in rows]
+
+    # --- watch points -----------------------------------------------------
+
+    def add_watch_point(
+        self,
+        user_id: str,
+        symbol: str,
+        level: float,
+        direction: WatchDirection,
+        note: str,
+        created_close: float | None,
+        created_at: datetime | None = None,
+    ) -> WatchPoint:
+        """Record a level this reader asked to be told about.
+
+        ``created_at`` is injectable for the same reason every other clock here is: a
+        fixture needs to place a point *before* the session that crosses it, because a
+        point is a question about what happens next (D37). Live callers never pass it.
+        """
+        point = WatchPoint(
+            point_id=secrets.token_urlsafe(12),
+            user_id=user_id,
+            symbol=symbol,
+            level=level,
+            direction=direction,
+            note=note.strip()[:MAX_NOTE],
+            created_at=created_at or datetime.now(UTC),
+            created_close=created_close,
+        )
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO watch_points
+                    (point_id, user_id, symbol, level, direction, note, created_at,
+                     created_close)
+                VALUES (?,?,?,?,?,?,?,?)
+                """,
+                (
+                    point.point_id,
+                    point.user_id,
+                    point.symbol,
+                    point.level,
+                    point.direction.value,
+                    point.note,
+                    point.created_at.isoformat(),
+                    point.created_close,
+                ),
             )
-            for r in rows
-        ]
+        return point
+
+    def watch_points(self, user_id: str, symbol: str | None = None) -> list[WatchPoint]:
+        """This reader's points, newest first. Scoped in SQL, never filtered afterwards."""
+        with self._connect() as connection:
+            if symbol is None:
+                rows = connection.execute(
+                    "SELECT * FROM watch_points WHERE user_id = ? ORDER BY created_at DESC",
+                    (user_id,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM watch_points WHERE user_id = ? AND symbol = ?
+                    ORDER BY created_at DESC
+                    """,
+                    (user_id, symbol),
+                ).fetchall()
+        return [_to_watch_point(row) for row in rows]
+
+    def open_watch_points(self) -> list[WatchPoint]:
+        """Every untriggered point across all readers — what a cycle has to evaluate.
+
+        Bounded by the index on ``triggered_on``: a triggered point is never re-examined,
+        so the work per cycle shrinks as points fire rather than growing forever.
+        """
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM watch_points WHERE triggered_on IS NULL"
+            ).fetchall()
+        return [_to_watch_point(row) for row in rows]
+
+    def mark_triggered(self, point_id: str, on: date, close: float) -> bool:
+        """Record the session that satisfied a point.
+
+        ``triggered_on IS NULL`` in the WHERE clause is what makes this announce once: a
+        second cycle reading the same bars updates nothing, so an unattended schedule can
+        run as often as it likes without repeating itself.
+        """
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE watch_points SET triggered_on = ?, triggered_close = ?
+                WHERE point_id = ? AND triggered_on IS NULL
+                """,
+                (on.isoformat(), close, point_id),
+            )
+            return cursor.rowcount > 0
+
+    def acknowledge_watch_point(self, user_id: str, point_id: str) -> bool:
+        """Mark a triggered point as seen, so it stops asking."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE watch_points SET acknowledged_at = ?
+                WHERE point_id = ? AND user_id = ? AND triggered_on IS NOT NULL
+                """,
+                (datetime.now(UTC).isoformat(), point_id, user_id),
+            )
+            return cursor.rowcount > 0
+
+    def remove_watch_point(self, user_id: str, point_id: str) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM watch_points WHERE point_id = ? AND user_id = ?",
+                (point_id, user_id),
+            )
+            return cursor.rowcount > 0
 
     # --- checkpoints and issued reviews -----------------------------------
 
@@ -326,3 +546,47 @@ class SqliteUserStore:
                 """,
                 (user_id, moment.isoformat()),
             )
+
+
+def _pack_tags(tags: tuple[str, ...]) -> str:
+    """Tags as one comma-separated column.
+
+    A join table would be the textbook answer; this is a short, closed vocabulary that is
+    always read whole and never queried across users, so a column is the honest size of
+    the problem.
+    """
+    return ",".join(tags)
+
+
+def _to_membership(row: sqlite3.Row) -> Membership:
+    raw = row["tags"] or ""
+    return Membership(
+        user_id=row["user_id"],
+        symbol=row["symbol"],
+        added_at=datetime.fromisoformat(row["added_at"]),
+        reason=row["reason"] or "",
+        watch_for=row["watch_for"] or "",
+        tags=tuple(t for t in raw.split(",") if t),
+    )
+
+
+def _to_watch_point(row: sqlite3.Row) -> WatchPoint:
+    return WatchPoint(
+        point_id=row["point_id"],
+        user_id=row["user_id"],
+        symbol=row["symbol"],
+        level=row["level"],
+        direction=WatchDirection(row["direction"]),
+        note=row["note"] or "",
+        created_at=datetime.fromisoformat(row["created_at"]),
+        created_close=row["created_close"],
+        triggered_on=(
+            None if row["triggered_on"] is None else date.fromisoformat(row["triggered_on"])
+        ),
+        triggered_close=row["triggered_close"],
+        acknowledged_at=(
+            None
+            if row["acknowledged_at"] is None
+            else datetime.fromisoformat(row["acknowledged_at"])
+        ),
+    )

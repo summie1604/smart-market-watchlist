@@ -1,32 +1,9 @@
 ---
 import Base from "../layouts/Base.astro";
-import AssessmentList from "../components/AssessmentList";
-import UserReview from "../components/UserReview";
+import Dashboard from "../components/Dashboard";
+import "../styles/app.css";
 ---
 
 <Base title="Smart Market Watchlist">
-  <main style="max-width: 52rem; margin: 2rem auto; padding: 0 1rem; font-family: system-ui, sans-serif;">
-    <h1>Smart Market Watchlist</h1>
-    <p>
-      <strong>Steps 0–4.</strong> Three source families travel one path: exchange
-      disclosures, market observations, and news → adapter → evidence → extraction →
-      grounding → event candidate → linking → corroboration → the Meaningful Change
-      Engine → persisted assessment. Your review then selects, from that shared record,
-      what changed since <em>you</em> last checked.
-    </p>
-    <p style="font-size: 0.9em;">
-      Deliberately unstyled. Corroboration counts independent publishers, not articles.
-      Two accounts watching the same company read the same underlying analysis and see
-      different reviews, because the window is theirs and the intelligence is not.
-    </p>
-    <hr />
-    <UserReview client:load />
-    <hr />
-    <h2>All shared intelligence</h2>
-    <p style="font-size: 0.9em;">
-      Everything the system knows, independent of any account. Two users watching the same
-      company share these records and differ only in which of them their own review shows.
-    </p>
-    <AssessmentList client:load />
-  </main>
+  <Dashboard client:load />
 </Base>

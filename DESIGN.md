@@ -6,9 +6,11 @@ This document records the architectural decisions behind the Smart Market Watchl
 
 It is not an implementation spec. Nothing here should be recoverable by reading the code; everything here should be hard to recover from the code alone.
 
-**Status: frozen, with D20–D22 appended after Step 0, D23 after Step 1, and D24–D25 at the Step 2 handoff.** The initial design was frozen before implementation. D20–D22 were appended after Step 0 and D23 after Step 1 because implementation exposed boundaries the original design left unresolved. D24 was appended from the Step 2 brief because it made an unresolved extraction boundary explicit. D25 records the chosen initial model provider after the planned Claude validation could not run without credentials; its model revision was corrected after live validation. These are recorded design decisions, not silent changes to the frozen architecture.
+**Status: frozen, with D20–D25 appended as earlier implementation exposed missing boundaries and D26–D33 added for the product and platform foundation.** The initial design was frozen before implementation. Every later entry records a boundary that could not safely be left as a silent code choice.
 
 The freeze means implementation must not silently redefine architecture. It does not mean a missing boundary must remain missing once discovered. D1–D19 are unchanged and unrenumbered.
+
+**D26–D33 are now implemented as foundations.** D26–D29 cover the attention experience, interests, price context and contradiction. D30–D33 cover a second client surface, the extraction harness, measured scale and the versioned generated API contract. The mobile work is intentionally a thin proof, not a complete application, and the scale results remain measurements of the paths actually exercised rather than a production-capacity claim.
 
 Every decision below is judged against [`VISION.md`](VISION.md). Where a decision is driven by a specific vision section, it says so.
 
@@ -168,19 +170,47 @@ Navigation is an output of these, not an input. No page or menu is decided befor
 
 Persona throughout: **retail investor**. One role, deliberately (see *Decisions*).
 
-### J1 — First-time user creates a watchlist
+### J1 — First-time user adds a company and says why
 
-Starts signed out, wants to track companies they already care about. They register, search by name or ticker, and add companies. Each addition states its coverage tier immediately — full or limited — so the user learns the system's honesty before they learn its verdicts.
-*Success:* a watchlist exists and the first review is scheduled. *Empty:* an empty watchlist explains what the product will do rather than showing an empty table. *Failure:* an unsupported symbol is refused with the reason, not silently dropped. *Recovery:* search suggests near matches within the supported universe.
+Starts with an empty watchlist, wanting to follow companies they already care about. They
+search, and each result states its coverage tier before they commit, so they learn the
+system's honesty before they learn its verdicts.
 
-**Baseline problem.** A brand-new watchlist has no previous checkpoint, so "what changed" is undefined. The checkpoint is set at creation and the first review honestly reports *"we started watching now"* rather than back-filling history as though the user had missed it.
+**Adding asks three things**, all optional and skippable in one click: *why are you
+following this company*, *what developments do you want to watch for*, and a set of tags —
+earnings, management, regulation, competitors, contracts, commodities, dividends, unusual
+price movement. The first two are free text kept for the user's own reference. Only the tags
+drive behaviour, and only as a filter and an annotation (D27).
 
-### J2 — Returning user asks "what changed?"
+*Success:* the company is on the watchlist and the user has said, in their own words, what
+they are watching for. *Empty:* an empty watchlist explains what the product will do rather
+than showing an empty table. *Failure:* an unsupported symbol is refused with the reason.
+*Recovery:* search suggests near matches inside the supported universe.
 
-The core journey. Signed in, arriving after some absence, wanting to know in thirty seconds whether anything needs them.
+**Baseline problem.** A new membership has no prior checkpoint, so the first review reports
+*"we started watching now"* rather than back-filling history as though it had been missed.
 
-They land on a **verdict, not a table**: how many things deserve attention, how many situations are developing, how many previously-flagged concerns resolved, how many companies were quiet, and how many could not be evaluated. Ranked items follow, each with its attention level, what changed, why it matters, confidence and freshness. Quiet companies are collapsed to a count. Then one deliberate action: **Mark review complete**.
-*Success:* the checkpoint advances to the review cutoff and the next visit starts from there. *Empty:* "nothing meaningful changed" is a real, confident answer with the sources it checked. *Failure:* sources unavailable produce *unable to fully evaluate*, visually distinct from quiet, naming what was missing. *Recovery:* the checkpoint does not advance past what could not be assessed; the user can review again once coverage returns.
+### J2 — Returning user opens straight into what needs them
+
+The core journey, and **the default surface**. Arriving after an absence, the user lands on
+*Needs attention*: only what is new since their last completed review, ordered by severity
+and then by recency (D26).
+
+Each item states the company, what happened, how sure we are, how many independent
+publishers back it, and — where the user recorded tags — whether it matches what they said
+they were watching for (D27). A focus filter narrows LOW and MEDIUM; it never hides a HIGH,
+which appears with a note that it falls outside the stated focus and matters anyway. A
+company filter narrows to one name without changing anything else about the order.
+
+Then one deliberate action: **Mark review complete**.
+
+*Success:* the checkpoint advances to the issued cutoff and the next visit starts there.
+*Empty — and this is the common case:* nothing new is a real answer, so the screen says so
+and points at the watchlist, which still carries the latest known development for every
+company followed. An empty *Needs attention* is never an empty product.
+*Failure:* sources unavailable produce *unable to fully evaluate*, visually distinct from
+quiet, naming what was missing. *Recovery:* the checkpoint does not advance past what could
+not be assessed.
 
 ### J3 — User opens a HIGH-attention company
 
@@ -211,6 +241,31 @@ Removes a company they no longer follow.
 
 Looks for a company, an event, a commodity or a theme across what the system knows. Shared intelligence is searchable; private state is not in the shared index.
 *Success:* they reach the company or event page. *Empty:* no match distinguishes "nothing indexed" from "nothing happened." *Failure:* search never leaks another user's watchlist, checkpoint or review history.
+
+### J9 — User compares a company against its benchmarks
+
+Inside a company's detail, wanting to know whether a move was the company or the market.
+They pick a range and see the company, its sector index and the broad index over the **same
+trading sessions**, rebased so the comparison is about relative movement rather than price
+levels (D28).
+
+*Success:* they can see whether the company diverged from its sector. *Partial:* where the
+three series do not share the full range — a holiday, a suspension, a shorter index history
+— the chart shows the span actually covered and says so. *Failure:* no bars for the window
+shows an empty chart with the reason, never an interpolated line.
+*Boundary:* the chart lives inside the detail. It never appears on the board, because a
+price chart on the main surface makes price the subject.
+
+### J10 — User sees an earlier story disputed
+
+They read a development days ago; newer, at-least-as-authoritative evidence now contradicts
+it. The record shows the original marked **disputed** and linked to the record disputing it,
+with both readable and neither deleted (D29).
+
+*Success:* they understand that what they were told has been contested, and by what.
+*Partial:* where the gates do not pass, the two are shown as *possibly related, relationship
+not confirmed* — never as a contradiction. *Confidence, not attention:* a disputed report may
+still be the most significant thing about the company; what changed is how sure we are.
 
 ### Presentation rules these journeys impose
 
@@ -505,6 +560,202 @@ Only D25 supersedes an earlier implementation choice: the provider named in D5.*
 - **Failure behaviour:** Quota exhaustion, rate limiting, provider errors and malformed output follow D5 and D24: evidence remains stored, the rule fallback may produce a separately-provenanced partial result, and affected evaluation health degrades visibly. Fallback output must never be represented as Gemini output.
 - **Consequences:** Gemini availability and free-tier limits are operational dependencies, not correctness dependencies. Model, prompt, schema, grounding and fallback provenance remain persisted so Gemini results can be evaluated against the same article set and replaced later by changing only the adapter. The active provider decision should be revisited before handling non-public evidence or moving beyond demonstration-scale traffic. See the [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) and [structured-output](https://ai.google.dev/gemini-api/docs/structured-output) contracts.
 
+### D26 — Canonical order is severity, then recency
+
+- **Decision:** Assessments are ordered by attention level first and, within a level, by when the development occurred, newest first. Score is no longer a tiebreaker and is not exposed as ordering.
+- **Why:** Two HIGH items ordered by score look ranked against each other, and the product does not claim that precision — the level is the claim, the score is the mechanism that produced it (D4). Recency is a fact the reader can check, and it answers the question a board is actually asked: *of the things that matter equally, what happened most recently?*
+- **Occurred, not learned.** The review *window* is measured by when the system learned something, because a late-arriving event is still new to the user. Ordering is measured by when it happened, because that is what "newer" means to a reader looking at a list. The two use different clocks deliberately, and both remain distinct fields.
+- **Options:**
+  - **A** — severity, then score, then symbol (the current behaviour). **Rejected:** implies a ranking between two items of the same level that the product does not stand behind.
+  - **B** — severity, then when we learned it. **Rejected:** a backfilled week-old item would head the list purely because ingestion was late, which reads as wrong to anyone who checks the date.
+  - **C (chosen)** — severity, then occurrence, newest first; symbol only to break exact ties.
+- **Consequences:** ordering becomes explicable in one sentence to a user, which score never was. A backfilled older event sorts below today's, and is still surfaced because the *window* placed it there — surfacing and ordering stay separate questions.
+
+### D27 — Interests filter and annotate; they never score
+
+- **Decision:** When adding a company a user may record why they follow it, what they want to watch for, and optional tags (earnings, management, regulation, competitors, contracts, commodities, dividends, unusual price movement). These interests may **filter** what is shown and **annotate** why an item matches. They never change an attention level, a confidence level, a corroboration count or the canonical order.
+- **Why:** the product's central claim is that a verdict follows from evidence. An interest is a hypothesis about what will matter; evidence is what did. If interests moved the score, two users watching one company would see different severities for the same event — shared intelligence would stop being shared (DESIGN *State*), the word "attention" would come to mean "preference", and D22's guarantee that ranking is consistent across clients would be gone.
+- **When focus and severity disagree, severity wins and the disagreement is shown.** A focus filter narrows LOW and MEDIUM. **It never hides a HIGH.** A HIGH outside the user's stated focus is shown with a marker saying so — *"outside your focus; we think it matters anyway."* Hiding it would be the product failing at the one job it claims, in the name of a preference the user expressed before the evidence existed.
+- **The match explanation is deterministic.** An item is marked as matching a tag when its event type maps to that tag, or when its extracted structured fields (regulator, counterparty, commodity, product) contain a term the tag covers. The mapping is curated and inspectable, like the alias sets in D21 — never inferred per-user, never model-decided. An unmatched item is not annotated rather than being annotated with a guess.
+- **Options:**
+  - **A** — interests contribute a reason code and shift the score. **Rejected** for the reasons above; it also makes the reason ledger (D4) partly about the reader rather than about the evidence.
+  - **B** — interests reorder within a severity level. **Rejected:** it contradicts D26's stated tiebreaker and quietly makes the order per-user, which is the same problem in a smaller package.
+  - **C (chosen)** — filter and annotate only, both visible and both reversible in one click.
+- **Consequences:** interests live entirely in private user state and never touch the shared assessment record. The free-text answers are stored for the user's own reference and to inform later curation of the tag vocabulary; they are not parsed into behaviour. Two users with opposite interests still see the same severities, which is what lets one analysis serve both.
+
+### D28 — Price context is end-of-day, aligned on common sessions, and rebased
+
+- **Decision:** Company, sector-index and broad-index series are drawn from **daily, corporate-action-adjusted end-of-day bars** — the same bars the engine already observes (D14). A chart offers selectable ranges over those bars. It is labelled end-of-day and never presented as live.
+- **Source:** `yfinance` for NSE equities and the NSE index family, which is what the market adapter already uses. It is unofficial and best-effort, and that is acceptable for context but not for a claim: a chart is illustrative, an assessment is not. A licensed feed (a broker API such as Kite Connect, or a commercial vendor) is what intraday or redistribution would require, and neither is in scope here.
+- **Alignment is the substantive part.** All three series are restricted to the **intersection of trading sessions** present in every one of them across the requested range, then **rebased to 100 at the first common session** so they are comparable as relative return rather than as price. A session missing from any series is dropped from all of them; nothing is interpolated or forward-filled. Where the common span is shorter than the range asked for — a holiday, a suspension, an index with less history — the chart shows the span actually covered and says so.
+- **Why this specifically:** comparing a company's session to an index's session of a different date is not a subtle error, it is a wrong number that looks precise. Step 1 shipped exactly that bug in the sector residual and it was caught only by testing a halted security. The rule is the same one, generalised and stated once.
+- **A benchmark that has stopped is excluded and named, not intersected away.** Implementation exposed the case: two of the NSE sector indices the price feed serves stopped updating months before the securities did. Intersecting a stale benchmark would cut the company's own chart back to that benchmark's last session and present the result as the range the reader asked for. So a series missing more than a couple of the security's *most recent* sessions is dropped from the comparison with a note saying why, while the intersection continues to handle ordinary gaps. Measured at the end of the series rather than across it, because a benchmark that skipped a day in March has gaps and a benchmark whose last session is months old has stopped.
+- **Every range is measured in sessions.** "1D" is the latest stored session against the one before it, not a day of intraday ticks. The range control and the basis line under the chart both say so, because a range labelled 1D without that would imply a feed this product deliberately does not have.
+- **Where a chart may appear:** inside a company's detail, never on the board. A price chart on the main surface would make price the subject, and the product's whole argument is that price is one signal among several and often the slowest (VISION §5).
+- **Consequences:** intraday movement, gap analysis and volume overlays are all out of reach without a different feed, and are named as such rather than approximated. The chart adds no new fabrication risk because it renders only bars already ingested.
+
+### D29 — Contradiction is a deterministic link, and the model may only propose it
+
+- **Decision:** An event carries a contradiction state — `STANDING`, `DISPUTED` or `WITHDRAWN` — and a `disputed_by` link to the later record that disputes it. Both records stay visible and linked; neither is deleted.
+- **The state is set only when every deterministic gate passes:** the two events resolve to the same company and the same identity bucket (D12); the disputing evidence is **at least as authoritative** as the disputed, by the tier ordering in VISION §12, so a forum post can never dispute a filing; the disputing evidence is later by publication time; and the contradiction terms are grounded in the disputing source under D24's gate. `WITHDRAWN` requires the narrower signal of the source itself correcting or retracting.
+- **The model's role is bounded to proposing.** An extractor may return a structured claim that B disputes A, with the evidence it relied on. It never sets the state. A proposal that fails any gate is recorded as a possible relationship — the same treatment D12 gives an `AMBIGUOUS` link — and is shown as *"possibly related; relationship not confirmed"*, never as contradicted.
+- **What may propose is broader than the model; what may decide is not.** The first proposer built is a curated cue vocabulary — the language a denial or a retraction is actually written in — because it is deterministic, inspectable and needs no model call. A model proposal enters the same gates and gets no additional standing. Neither proposer decides anything.
+- **A grounded denial holds the merge.** Implementation exposed this: a denial reads like the story it denies — same company, same event type, much of the same wording — so D12's linking merged it into that story and the disagreement disappeared inside the record of the claim. A proposal therefore blocks a LINK outcome, and the denial becomes its own event. This is the same trade D12 already makes: a duplicate is survivable, a false merge is not.
+- **A dispute lowers confidence, not attention.** A contested report may still be the most significant thing about a company; what changed is how sure we are. Collapsing the two axes here would undo the separation the product holds everywhere else.
+- **Options:**
+  - **A** — let the model judge contradiction directly. **Rejected:** it makes the model the source of truth for a claim about the world, which D5 forbids, and an unexplainable contradiction is worse than none.
+  - **B** — infer contradiction from sentiment or polarity. **Rejected:** unexplainable and reliably wrong on financial prose.
+  - **C (chosen)** — deterministic gates over structured attributes and source tiers, with the model proposing candidates.
+- **Consequences:** contradiction detection will have low recall — most corrections are quiet and many disputes are never explicit. That is the same trade the lifecycle work takes in D16, and for the same reason: a false contradiction destroys trust in every verdict beside it, while a missed one leaves the record merely incomplete. This is a narrow slice of D16 and does not implement the rest of the lifecycle.
+
+### D30 — One API serves web and mobile; sessions are presented two ways
+
+- **Decision:** Web and a later mobile app are two clients of the same HTTP API. Authentication, watchlists and interests, review assembly and completion, company detail, the supported universe and chart series are all shared. There is no mobile-specific backend.
+- **Sessions:** the server-side session record from D8 stays the single model of identity. The web presents its identifier as an HttpOnly cookie; a mobile client presents the same identifier as a bearer token. One session table, one expiry, one revocation path, two transports. A second authentication system would be a second place for authorization to be wrong.
+- **What differs is payload shape, not contract.** The review response currently embeds every assessment in full, which suits a web page and is wasteful on a phone. The honest position is that the current shape is web-shaped; a compact projection is the change mobile will need, and it is an addition rather than a fork.
+- **Consequences:** every authorization rule is written once. Mobile inherits the review-window semantics (D7) exactly, including the frozen cutoff and monotonic completion, which is the part most likely to be got wrong in a second implementation.
+
+### D31 — The LLM harness measures; it never writes to the domain
+
+- **Decision:** A harness runs a fixed article set through one or more providers and records what happened. It writes only to its own tables and never to the assessment store. Nothing it produces reaches a user-visible verdict.
+- **What it stores per run:** the evidence reference (not a copy of the article), provider, model, prompt version, schema version, the **raw model output verbatim**, the validated extraction after the grounding gate, which fields were dropped and why, latency, token counts, an estimated cost, a run identifier and timestamp, and the version of the expectation set it was scored against.
+- **How outputs are compared:** against the curated expectation set by **deterministic invariants** — correct subject company, no unsupported counterparty or value, correct rejection of non-events, speculation still marked speculative — never by another model judging the first. Provider comparison runs the same set through each provider and reports precision, recall, grounding rejections, unusable responses, latency and cost **per model, never blended**: the Step 2 evaluation had to be assembled from three sibling models because of a daily cap, and reporting that as one figure would have described a model that never ran.
+- **What the model still may not own** is unchanged by the harness's existence: rankings, provenance, timestamps, calculations and coverage. The harness measures the extraction boundary and nothing downstream of it.
+- **Consequences:** raw output is retained, so a later change to the grounding gate can be re-scored against runs already made without paying for them again. Storage grows with runs rather than with users, and the set is small by design.
+
+### D32 — Scale is a stated path, not a claim
+
+- **Decision:** The design records what has been *tested*, what the shape supports, and the trigger for each next step — and refuses to describe untested capacity as a property of the system.
+- **Tested today:** nine curated companies; roughly 400 articles per ingestion cycle; a single process; SQLite; a handful of accounts; twenty model calls per day on a free tier. Nothing beyond that has been run.
+- **The property that makes it scale is already true:** the expensive work — ingestion, normalization, identity, corroboration, scoring — is per *company* and shared, while per-*user* work is a window filter over shared rows. Users can therefore grow without multiplying analysis. That is a structural fact about the current code, not a projection.
+- **Caching** follows the same split: the ranked shared assessment list is cacheable per source-run generation and shared by every reader; per-user review results are cheap to recompute and are not cached. Caching a per-user review would create a second place for a checkpoint to be wrong.
+- **Database evolution:** SQLite until one of D10's stated triggers fires — sustained concurrent writers, multiple application instances, measurable lock contention, or a deployment where a local file is unsuitable. Migrations remain append-only, with every historical version tested to head.
+- **Ingestion throughput:** families run sequentially today. The next step is bounded per-company parallelism inside a family; a queue and separate workers come only when one process demonstrably cannot keep up, and that has not been demonstrated.
+- **Performance targets:** 10,000 active users, at most 50 watched companies per user, 50 covered securities, up to 500 evidence records every 15 minutes, review assembly p95 below 300 ms, and stored chart transformation below 150 ms.
+- **Measured boundary:** the local validation exercises 50 memberships over 500 shared assessments both in memory and through SQLite, 500 rule extractions plus grounding, and 252 aligned chart sessions. The review and chart paths pass their targets. Source HTTP time, model latency, the deployed API, SQLite write contention and a complete 500-evidence ingestion cycle are explicitly outside that result. Peak process memory is reported as a high-water mark. The reproducible numbers live in `docs/validation/scalability.md`.
+- **Consequences:** the measurements do not justify Postgres, Redis or a queue. Measure a full ingestion cycle and real database contention next; introduce infrastructure only when the stated trigger is observed.
+
+### D33 — Pydantic/OpenAPI owns the wire contract; TypeScript clients consume a generated version
+
+- **Decision:** all product routes live under `/v1`. Pydantic response models are the source of the JSON wire shape, FastAPI's OpenAPI document is the interchange format, and a committed generated TypeScript module is consumed by both web and mobile. `/health` remains unversioned because it describes the process rather than the product contract.
+- **Options:**
+  - **A** — maintain TypeScript interfaces independently in each client. **Rejected:** drift is inevitable and had already occurred when the API gained `/v1`.
+  - **B** — use untyped JSON at the clients. **Rejected:** it moves contract failures to runtime and makes a second surface unnecessarily risky.
+  - **C (chosen)** — generate one private workspace package from OpenAPI and commit the result so builds do not require a running server.
+- **Versioning:** additive compatible fields stay in `/v1`; a breaking semantic or structural change requires `/v2`. Generated types share shape and vocabulary, not presentation components or client-side ranking logic.
+- **Consequences:** every response route must declare a response model, and regeneration is part of validation. Server-authoritative ranking, coverage, interests and checkpoints cross the boundary verbatim; neither client is allowed to reconstruct them.
+
+### D34 — A watchlist card may show a compact end-of-day price status, not a chart
+
+- **Decision:** the main watchlist may show the latest stored close, its adjusted change from the prior completed session, and a short visual trace of recent stored closes. It is labelled with its session date and unavailable state. The full aligned company-versus-benchmark chart remains only in company detail (D28).
+- **Options:**
+  - **A** — keep all price context off the board. **Rejected:** the watchlist requirement needs a beginner-readable current price and daily movement before a reader decides whether to open a company.
+  - **B** — put the existing comparison chart on every card. **Rejected:** this overturns D28's hierarchy, competes with meaningful developments, and makes a compact board visually noisy.
+  - **C (chosen)** — a small stored-data status and sparkline, with the detailed comparison after drill-down.
+- **Consequences:** the price summary is an additive `/v1` contract generated from Pydantic, and reports only persisted EOD bars. It does not claim an intraday price, create an assessment, or change canonical news order. Missing or insufficient bars render an explicit unavailable state rather than a synthetic line.
+
+### D35 — The explainer answers from the record; it is not a chat box
+
+- **Decision:** company detail carries an *"Ask about this company"* explainer that answers a **bounded set** of questions from persisted assessments, reason codes, coverage records, stored market observations and cited evidence — the same records the API already serves. It is composed deterministically. **No model participates in the answer path**, no ingestion or external fetch is triggered by a question, and every statement about the company carries the event ids it came from.
+- **Why this and not a chatbot:** VISION §17 refuses natural-language querying because *the intelligence must exist in the evaluation, not in a chat box*. That refusal is about where the analysis lives, not about whether a reader may ask a question. Explaining a verdict the engine already reached is the evaluation speaking; answering an open question about a company is a second, ungoverned analysis path — and the second one can be wrong in ways nothing downstream would catch.
+- **Advice is refused before anything is looked up.** *"Should I buy"* is not a question with a weak answer; it is one this product does not answer (§6). Resolving intent first means the refusal cannot be softened by whatever the records happen to say — including in a question that wraps advice around something answerable.
+- **The window is the reader's, the records are everyone's.** An answer states the evidence window it speaks for and the coverage gaps that bound it, on every response including refusals. A company the reader does not watch is answered from shared intelligence with no personal window claimed, rather than borrowing a checkpoint that was never about it.
+- **Every failure state is named**, and `answered: false` is a normal outcome rather than an error: out of scope, unsupported question, nothing on file, nothing on file *about that*, and a price question with no stored observation. Each carries a reason, so a client says *why* instead of showing an empty box.
+- **Options:**
+  - **A (chosen)** — deterministic intent routing over a curated pattern set, answers composed from stored rows, every statement cited.
+  - **B** — the same deterministic evidence packet, phrased by a model, with the D24 grounding gate dropping any sentence whose values are absent from the packet. **Rejected for now:** it puts a model in the *answer* path rather than the extraction path, adds latency to a user request, makes the output non-deterministic so tests can only assert invariants, and spends the model quota the harness already shows is the binding constraint on extraction. A plausible ungrounded sentence surviving a gate is a worse failure here than a missing answer.
+  - **C** — open natural-language querying across the whole watchlist. **Rejected:** explicitly out of scope (§17), and the failure mode is an unsupported market claim stated in the product's own voice.
+- **B stays cheap to reach.** The packet is already built deterministically, statements already carry citations, and `generated_by` records which path produced an answer — so a model-phrased variant is an adapter behind the same contract, evaluable through the existing harness, and never confused with this one.
+- **Consequences:** the explainer cannot answer an unusual phrasing, and says so with suggestions rather than guessing. The intent vocabulary is curated and will need extending, which is the same trade D27 makes for focus tags: a match that cannot be explained is not worth having. Per-company reads are bounded (50 newest), because a company accumulates evidence without limit.
+### D36 — Source standing is a third axis; market reaction nudges attention, it never decides it
+
+- **Decision:** every assessment carries a **source standing** — `OFFICIAL`, `ESTABLISHED`, `SYNDICATED_RELEASE`, `UNRECOGNISED`, `COMPUTED` — derived deterministically from the evidence tier and a curated publisher registry, and shown as its own badge beside attention and confidence. Separately, two new reason codes let observed market behaviour and source standing move a news item's attention: `NO_MARKET_REACTION` (−1) and `UNRECOGNISED_PUBLISHER_ONLY` (−1).
+- **Why a third axis at all:** attention answers *does this matter*, confidence answers *how sure are we*, and neither answers *what kind of thing said it*. A reader deciding whether to open a story wants the third one first, and today it is only recoverable by expanding the evidence list and recognising the publisher yourself. Live data made the case: 77 distinct publishers in one window, ranging from the NSE to aggregators nobody has heard of.
+- **Not "verified".** We verify nothing about a publisher. `UNRECOGNISED` means *absent from a curated list*, and the reader-facing label says "unrecognised publisher" rather than "unverified" — because the second one is a claim about the outlet and the first is a claim about us. Press-release wires get their own state rather than being folded into either neighbour: a release is the company's own words carried verbatim, which is closer to a primary source than an aggregator and further from journalism than a newsroom.
+- **The market-reaction code is the dangerous half, and is deliberately weak.** VISION §5 holds that magnitude is not meaningfulness and that price is often the *slowest* signal; §13 refuses causation outright. Scoring news by whether the price moved would invert both. So: the code fires only where we **actually observed** the market (a market we did not consult produces `NO_MARKET_OBSERVATION`, never an inference from silence), it is worded as an observation about the market rather than a judgement about the report, and at −1 it cannot move an item more than one level or push anything to `NO_MEANINGFUL_CHANGE` on its own.
+- **Standing is expressed in the ledger exactly once.** The badge is display; `UNRECOGNISED_PUBLISHER_ONLY` is the scored expression of the same registry, and it fires only when *every* news publisher behind an event is outside the list. One independent recognised publisher clears it, and three unrecognised publishers still reach the reader through `INDEPENDENT_CORROBORATION` — the corroboration model (D13) promotes a real story broken outside our list, rather than the registry silencing it.
+- **Options:**
+  - **A** — score news by observed price reaction. **Rejected:** it asserts causation between a headline and a move (§13) and makes the product a price dashboard with extra steps.
+  - **B** — make source standing a scoring input in proportion to tier. **Rejected:** confidence already reads tier, and a second reading of the same fact double-counts it.
+  - **C (chosen)** — standing as a display axis, with a single bounded reason code for the one case the registry genuinely speaks to, plus a symmetric market-observation code.
+- **Consequences:** `SCORING_VERSION` moves to `2026-09-06.a`; assessments stored under the previous version keep it, which is what the version is for. The registry is curated and certainly incomplete, so it will mislabel outlets we have not catalogued — the label is descriptive for exactly that reason. An important development that the market has not yet priced is nudged down by one point, which is a real cost accepted deliberately against the noise it removes.
+### D37 — A watch point is the reader's bookmark, settled on stored closes and never pushed
+
+- **Decision:** a reader may mark a **price level** on a company with a note in their own words. The level is settled during the scheduled ingestion cycle against **stored end-of-day closes**, and a crossing surfaces on the board and in the review the next time they look. Watch points are private user state: they never become assessments, never change an attention level, and are never visible to another reader.
+- **Why this is not the notification stream §17 refuses:** it is pull-based. Nothing is pushed to a device, no digest is sent, and a reached level waits at the top of the brief rather than interrupting. The reader chose the level and chose when to look; the product does not acquire a channel into their day.
+- **Why it is not advice or a forecast:** the level is the reader's claim, not ours. We do not suggest one, evaluate whether it is sensible, or say anything about what the price will do. A watch point is a bookmark that happens to be numeric.
+- **Direction is inferred once and frozen.** A level above the last stored close is a rise to wait for; below it, a fall. Re-deriving that later would flip the point's meaning as the price moved — "tell me if it falls to 1,300" would silently become "tell me if it rises to 1,300" the moment it fell.
+- **A level already reached is refused, not created.** An alert that fires the instant you set it teaches you to ignore it, and the reader almost certainly meant a different number. The refusal names the last stored close so they can pick again.
+- **End of day, never intraday.** The trigger says *"closed at ₹1,405 on 2026-09-08"* — a session and a number we hold — rather than "hit ₹1,400", which would claim a tick we never observed. This is the same restraint D28 applies to charts.
+- **It announces once.** `mark_triggered` updates only where `triggered_on IS NULL`, so re-running a cycle over the same bars changes nothing. Acknowledging is separate from deleting: the record of a level that was reached survives being dismissed.
+- **Options:**
+  - **A** — evaluate on read, when a page loads. **Rejected:** a reached level would then depend on someone looking, and it would put the evaluation on a request path that D3 and D35 keep free of side effects.
+  - **B** — push a notification when a level is crossed. **Rejected:** §17, explicitly.
+  - **C (chosen)** — settle unattended during the cycle against bars already stored, and surface the result on the next visit.
+- **Consequences:** the granularity is one session — a level crossed and recovered within a day is not seen, which is the honest limit of end-of-day data. Evaluation reads only untriggered points, so the work per cycle shrinks as points fire. Non-price conditions ("watch out for a regulatory ruling") are not supported; the note carries that intent for the reader, and focus tags (D27) are the mechanism if it ever needs to be machine-checked.
+### D38 — Watchlist sorting is a presentation axis; it never touches canonical order
+
+- **Decision:** the watchlist may be sorted client-side by biggest gainers, biggest losers, largest absolute move, alphabetically or by recently added, from figures already loaded. The default is unchanged — the attention-led arrangement `buildRows` produces. No request is made to sort, and no other list on any surface is affected.
+- **Why this does not contradict D22/D26:** they answer *"which development deserves the reader first"*, and that answer is the backend's alone. This answers *"which company do I want to look at right now"*, which is a question about the reader's attention rather than about evidence. Two different objects, two different questions; conflating them is what D22 forbids, not letting a reader arrange their own list.
+- **Missing data sorts last, never as zero.** A company with no stored close is not a flat move, and placing it mid-list would assert that it did not move.
+- **Options:**
+  - **A** — sort server-side with a `?sort=` parameter. **Rejected:** it spends a request to reorder rows already in hand, and it would make the server appear to have two orderings.
+  - **B** — let the sort also reorder developments inside the detail. **Rejected:** that is exactly the canonical order, and it belongs to the engine.
+  - **C (chosen)** — a pure client-side sort of loaded rows, offered only on the watchlist view.
+- **Consequences:** the control appears only where it does something (the watchlist), alongside the focus filter which appears only on *Needs attention*. Sorting is not persisted; it is a way of looking, not a setting.
+
+### D39 — A percentage watch point measures from the price frozen when it was set
+
+- **Decision:** `PERCENT_UP` and `PERCENT_DOWN` watch points compare a stored close against `created_close` — the last stored close at the moment the point was created — and that baseline is persisted once and never recomputed. `ABOVE` and `BELOW` points are untouched.
+- **Why frozen:** a baseline that followed the price would make *"tell me if it falls 5%"* unreachable in a slow decline, because the bar would walk down with the price. Freezing it is also what makes evaluation deterministic: the same point over the same bars gives the same answer on every cycle, which is what the announce-once guarantee (D37) rests on.
+- **Reuses the existing column.** `created_close` was already persisted as context for a price point; a percentage point gives it a second, load-bearing job. No migration, no new table, no second alert model.
+- **Options:**
+  - **A** — measure against the previous session's close. **Rejected:** that is a daily move, not "since I asked", and a gradual decline would never trigger.
+  - **B** — recompute the baseline on each cycle. **Rejected:** non-deterministic, and it silently redefines what the reader asked for.
+  - **C (chosen)** — freeze the baseline at creation and record it on the point.
+- **Consequences:** the reader is shown the baseline alongside the condition (*"down 5% from ₹1,322"*), because a percentage with no anchor is not checkable. A point created when no close was stored is refused rather than created without a baseline.
+### D40 — The assistant is an interface to the existing intelligence, not a second one
+
+- **Decision:** a conversational assistant answers questions about one company or about the whole watchlist, composed entirely from records the deterministic core already produced. It extends `core/explainer.py` (D35) with a watchlist scope and four intents; it adds no engine, no store, no provider and no reasoning of its own. `POST /v1/assistant/ask` takes a question and an optional `symbol` of UI context.
+- **One implementation behind both callers.** `/v1/companies/{symbol}/explain` and the assistant's company path run the same function over the same records. A second implementation would be a second place for the grounding rules to drift, and the older contract keeps its exact shape.
+- **Grounding is structural, not promised.** There is no generator in the answer path, so there is nothing that *could* invent a price, a counterparty, a cause or a recommendation. Every statement about the world carries the event ids it came from; a sentence that cannot name its records is not emitted. Advice and prediction are refused before any lookup, at both scopes. The failure mode is a missing answer, never a fabricated one.
+- **Nothing is fetched to answer a question.** No market call, no news call, no ingestion, no model. A watchlist answer costs one review assembly and one bounded bar read — the same work as opening the dashboard — and a company answer reads the same bounded 50-row slice `/explain` already reads.
+- **Context is a hint, not a cage.** A company in view answers a company question without a ticker. A watchlist question asked from a company page is answered at *its* scope rather than narrowed to fit, and a company question asked with no company says which one it needs.
+- **Source credibility is the product's one vocabulary.** Cited evidence carries the same `SourceStanding` labels used everywhere else (D36). No second taxonomy exists for chat.
+- **No LLM.** D35 already weighed a model-phrased variant and rejected it: it puts a model in the *answer* path, makes output non-deterministic, and spends the quota the harness shows is the binding constraint on extraction. Because there is no model, the "assistant still works when the provider is down" requirement is satisfied structurally rather than by a fallback path. If one is ever added it goes behind the existing `ports.Extractor` boundary, names itself in `generated_by`, and phrases only — retrieval, significance, credibility and ordering stay deterministic.
+- **Why not RAG, a vector store, or an agent framework:** the corpus is one user's watchlist — tens of rows behind a bounded indexed query, already normalised, already scored, already carrying provenance. Embedding it would replace an exact lookup with an approximate one, and an agent loop would hand a model the fetching and judging this design deliberately keeps deterministic. Retrieval here is a `WHERE symbol = ?`.
+- **Consequences:** the transcript is session-only and held in component state — each answer is composed independently from the stored record, so there is no conversational memory to keep and persisting one would imply reasoning across turns that is not happening. The inline "Ask about this company" section is replaced by the drawer rather than sitting beside it; two ask surfaces on one page would be the duplication this decision exists to avoid.
+### D41 — One container, one origin, one scheduler
+
+- **Decision:** the deployable unit is a single image in which the API also serves the built frontend from `WEB_DIST`. `/data` is a mounted volume holding the one SQLite file. Exactly one container runs.
+- **Why one origin:** the session cookie is the web transport (D30). Split across two origins it needs `SameSite=None`, `Secure`, an explicit CORS allowlist and a shared parent domain — four things to get wrong to support a separation that buys nothing here. Serving the built site from the API removes the problem rather than configuring around it. `WEB_ORIGINS` remains for a split deployment.
+- **Why one container:** SQLite and the in-process scheduler both assume a single writer (D10, D32). Two replicas against one volume would ingest simultaneously — which is precisely D10's stated migration trigger, not a thing to paper over with a lock.
+- **The static mount is last and conditional**, so it can never shadow an API route and the API runs alone unchanged when `WEB_DIST` is unset.
+- **Consequences:** no horizontal scaling without first taking D10's migration. Losing the volume loses everything, so the volume is the deployment's single stated requirement. Health stays liveness-only: source health is a domain verdict and belongs on the assessment, not on a probe a load balancer reads.
+### D42 — Judge mode seeds real domain records; it never impersonates live market data
+
+- **Decision:** `SMART_WATCHLIST_MODE=judge` seeds a fixed six-company scenario by running the **production ingestion cycle** over fixture adapters, then serves it with the scheduler disabled. The fixtures are *sources*: they implement the same protocols as the NSE, news and market adapters, and nothing downstream — extraction, grounding, linking, corroboration, the engine, persistence, the explainer — knows the difference. The only simulated part is the market scenario.
+- **Why not frontend mocks:** a hardcoded card proves nothing. A judge who opens *"Why you're seeing this"* on a mocked item finds a hardcoded string; here they find the real ledger, and the scenario is only convincing *because* the engine produced it. Mocking would also make the most inspectable part of the product the one part that was fake.
+- **Why not live providers for judging:** the demo would then depend on an interesting market event happening shortly before someone looks, on NSE and Google News being up, and on a model quota. Judge mode reaches no provider at all, which was verified by making all four adapters raise during seeding.
+- **Storage is isolated by derivation, not by trust.** The judge path is derived from the live one (`judge-` prefix) or set explicitly, so the two cannot collide even when only `WATCHLIST_DB` is configured. The seeded database carries a marker row; seeding and reset both **refuse any database that holds records and is not marked**, so a misconfigured path fails loudly instead of overwriting real data.
+- **The mode is explicit and validated.** An unknown value raises at import. Judge mode is never inferred from a missing key or an empty database — an accidental entry would put simulated data in front of someone who believed it was real, which is the single failure this feature exists to prevent.
+- **Reset restores the scenario** and exists only as a route when the process started in judge mode, so there is nothing to authorise around in live mode.
+- **Fixture ordering is data, not luck.** Timestamps are offsets from seed time, so the demo never looks stale while the relationships hold: the filing precedes the move precedes the reporting, and a watch point is created two days before the session that crosses it — because `evaluate` ignores sessions on or before the creation date, and the fixture respects that rule rather than working around it.
+- **A limitation the fixture exposed rather than hid:** coverage is a *per-source-family* verdict, so within one review a company with nothing new is either quiet or unable — never one of each. The scenario therefore demonstrates the coverage gap (`ITC — could not evaluate reliably`) rather than a quiet company. Changing `review.py` to make both appear simultaneously would have been changing the domain model to flatter a demo.
+- **Consequences:** fixture outcomes are a consistency check on deterministic reason-code paths, never evidence of real-world model quality — they are not precision or recall and are not reported as such. Judge mode ingests nothing, so `POST /ingest` returns 409 and the scheduler reports itself disabled rather than idle.
+### D43 — Related assessments may be grouped for attention presentation, never merged
+
+- **Decision:** the attention surface groups records that describe one development onto a single card, showing the primary's verdict and reasoning with the rest one expand away. Grouping is a **display key** computed at serialisation time (`development_id`) and changes nothing about event identity, scoring, reason codes, evidence, corroboration, canonical ordering or review semantics.
+- **Why it is needed:** the product's argument is that attention is scarce. Three cards saying nearly the same thing spend it badly even when all three records are individually correct — the interface would be failing the thesis the engine is upholding.
+- **The relation is D12's, reused rather than reinvented:** same company, within D12's link window, and title similarity at or above D12's calibrated link threshold (0.5, tuned against real multi-publisher coverage). What it drops is the **event-type bucket**, and that is the whole point. The three RELIANCE records that prompted this were classified `Agreements`, `Acquisition` and `Outcome of Board Meeting` — three buckets, so linking could never consider them, while a reader plainly sees one announcement reported three ways.
+- **Why dropping the bucket is safe here and not in D12:** D12 merges evidence and rewrites provenance, so a false merge corrupts corroboration invisibly and permanently. This asserts only that a reader would call these one story, merges nothing, and is undone by clicking expand. The consequence of being wrong is a collapsed card, not a corrupted record.
+- **It cannot chain.** A candidate is compared against a group's primary, never against any member, so A grouping with B and B with C does not drag in a C unlike A.
+- **The primary is the canonical first.** Presentation reuses the backend's single ranking answer (D26) rather than introducing a second one, and groups appear in their primary's position so ordering survives grouping untouched.
+- **Scores are never summed.** The card shows the primary's attention, confidence and reason-code arithmetic. A related record with a different verdict is shown as development history rather than hidden, because a story that was MEDIUM yesterday and is HIGH today is information.
+- **Corroboration stays D13's.** The development's independent-source count is computed over the union of its evidence by `assess_corroboration`, never by adding member counts, which would double-count shared publishers. Zero is omitted rather than printed: our own market measurement has no publisher.
+- **Computed on the server** because that is where the calibrated relation lives. A TypeScript reimplementation would be a second copy of a tuned rule, and the copy nobody tested would eventually win. The client does a `groupBy` and nothing more.
+- **Deliberately not applied to the company timeline.** That surface answers *"what happened, in order?"* and each update is a distinct thing that happened; the attention surface answers *"what deserves me?"*, where three near-identical cards are the problem. Different questions, different presentation.
+- **Consequences:** records that a reader would call one story but whose wording diverges below the threshold stay separate — the intended failure direction. A market observation coinciding with a story stays its own item, because grouping it in would assert a cause the system does not claim.
 ---
 
 ## Not doing
@@ -512,7 +763,7 @@ Only D25 supersedes an earlier implementation choice: the provider named in D5.*
 - **Reddit and social signals.** Deferred deliberately, not dropped. Another adapter, noisy entity matching, discussion baselines, manipulation and spam, sentiment ambiguity and rate limits — disproportionate cost against a thesis better served by lifecycle, disclosure and structured news. **The seam stays:** the event and evidence model is source-neutral, and S5 shows the adapter slotting in without touching the engine. Social remains a planned signal family in the architecture and the vision.
 - **Supply-chain graphs, broad geopolitical ingestion, exhaustive competitor graphs, full international-market relationships.** Represented in company context where curated and verifiable; not built as ingestion pipelines. **No empty abstractions or unused infrastructure are built in anticipation of them.**
 - **Notifications, alerts, digests.** The product is deliberately pull-based; adding an interrupt stream to an attention product contradicts its premise (VISION §17).
-- **Natural-language querying.** The intelligence must exist in the evaluation, not in a chat box.
+- **Natural-language querying, and a general chatbot.** The intelligence must exist in the evaluation, not in a chat box. D35 draws the line precisely: a reader may ask a bounded question about *one* company and receive an explanation composed from records already assessed, cited and windowed. Free-form questions across the watchlist, anything a model answers in its own words, and anything that would reach a source at question time remain out.
 - **Price prediction, recommendations, broker integration.** Out of scope by principle, not capacity.
 - **Per-event read state.** D7 — session-level checkpoints only. Revisit only if it proves cheap and a journey demands it.
 - **OAuth, social login, MFA, passwordless, federation.** D8.
@@ -523,6 +774,13 @@ Only D25 supersedes an earlier implementation choice: the provider named in D5.*
 - **A multi-provider LLM framework.** D5 — one interface, one adapter.
 - **A React SPA.** D2.
 - **Global securities as watchable instruments.** Global data is evidence; the universe is Indian equities (VISION §1).
+- **Intraday quotes, tick data and live streaming.** D28 — daily adjusted EOD bars only. Intraday resolution turns an attention product into a price monitor, is the expensive half of every market feed, and answers a question the product has decided not to ask.
+- **Redistribution-licensed market or news feeds.** The price context is derived from freely retrievable EOD data and shown as our own comparison; no vendor content is re-served. If a licensed feed ever becomes necessary, it is a procurement decision recorded as a new one — not something an adapter quietly adopts.
+- **Model-owned contradiction.** D29 — a model may propose that two records conflict; only the deterministic gates may mark one disputed. Nothing is deleted or rewritten on a model's say-so.
+- **Per-user scoring, learned relevance, or personalised attention levels.** D27 — interests filter and annotate; they never change a score. Two users looking at the same company see the same severity, and the shared intelligence stays shared.
+- **A mobile-specific backend, a second API, or a BFF layer.** D30 — one API, two transports. A mobile client that needs a different response shape is a signal that the response shape is wrong for both.
+- **A model leaderboard or blended quality score.** D31 — the harness measures per model against deterministic invariants and reports per model. Averaging providers into a single number destroys the only thing the measurement was for.
+- **Untested scale claims.** D32 — what was run is stated as run; everything beyond it is stated as a path, with its trigger.
 - **A separate `mental-model.md`.** Deliberate omission, not an oversight. `VISION.md` already owns the conceptual model — meaningful change, attention versus recommendation, world state versus user state, confidence versus attention — and this document owns architecture. A third file restating those concepts would add documentation surface without adding clarity. **Documentation artifacts exist when they resolve a distinct engineering concern, not because a template has a checkbox.**
 
 ---
@@ -536,33 +794,18 @@ Four resolutions that were listed here have been folded into the decisions above
 3. **Baseline warm-up.** Newly added securities have no trailing distribution. The design says movement claims are weaker and must say so; how weak, and for how long, is undecided.
 4. **Assumption: `yfinance` and RSS remain usable throughout.** Both are unofficial or best-effort. Isolation behind adapters means an outage degrades one class, but a permanent break in the market adapter has no fallback and would be a significant loss.
 5. **Assumption: the NSE disclosure endpoints are workable.** They are undocumented and defensive. If integration proves unreliable, the adapter boundary preserves the capability while the source is swapped — but the HIGH-confidence tier depends on having *some* authoritative source, and losing it weakens the provenance story more than losing any other single input. This is what Step 0 exists to settle early.
+7. **Interest tags are a fixed curated vocabulary (D27).** Free-text tags would match how people actually describe what they watch, but nothing deterministic could then explain *why* an event matched. Whether a small curated set stays sufficient, or needs a curated synonym layer over free text, is unsettled and should be answered by what users actually type into the free-text fields.
+8. **Sector index membership is curated per company (D28).** There is no free, reliable, machine-readable NSE sector-constituent mapping; the assignment is hand-maintained and will drift. How to detect drift — rather than re-curate on a schedule — is undecided.
+9. **The contradiction gates are strict by construction (D29).** Requiring same identity bucket, at-least-equal source tier, later publication and grounded text will miss real contradictions — a correction from a lower-tier outlet, or one phrased without reusing the original's terms. That is the intended failure direction, but the false-negative rate is unmeasured.
+10. **The harness ground truth is small and designed.** Its 21 human-authored cases cover known hard failures; they are not a random sample of live news. A shared omission outside that vocabulary remains invisible, so fixture performance must never be presented as live accuracy.
+11. **Bearer session rotation and secure device storage are not designed yet (D30).** Server-side expiry and revocation already apply to both transports. A complete mobile app still needs an operating-system-backed token store, renewal policy and compromised-device story.
+
 6. **Both documents live at the repository root**, not `docs/`, which is where the other Aganitha skills look. Deliberate — they are the two top-level artifacts of the project — but a pointer file may be needed for `aganitha-system-health` and `aganitha-preflight` to find them.
 
 ---
 
 ## Next
 
-Steps 0 and 1 are complete. The next reader should finish Step 2 against D5, D12, D13, D15, D20, D21, D24 and D25 without reopening the architecture. The remaining model-backed acceptance work uses Gemini; Claude credentials are no longer a prerequisite.
+Do not scale infrastructure yet. First measure one complete live 500-evidence cycle, including network waits and SQLite writes, and add a contention test that can actually exercise D10's migration triggers. Retry the single-model harness when provider quota is available; the current run proves explicit quota failure and fallback, not model quality.
 
-### Step 2 — Prove real news as meaningful change
-
-The first acceptance boundary is one real article travelling through the complete existing path: source → evidence → validated extraction → subject resolution → event identity → provenance and corroboration → Meaningful Change Engine → persistence → API → the existing UI. It must be rendered before coverage broadens. This is the same thin-slice discipline that exposed D20–D23; it prevents individually plausible backend pieces from accumulating without proving that their contracts compose.
-
-Once that slice works, a compact set of roughly twenty real articles should challenge semantic invariants rather than exact wording: correct subject, no invented entities or figures, preserved speculation and evidence references, multi-company and incidental mentions, syndicated coverage, follow-ups, and separate same-day events. Extraction failures that would poison identity or evaluation are corrected before more sophisticated linking is added.
-
-Step 2 is complete only when the system demonstrates all of the following through the shared domain path:
-
-- several publishers covering one occurrence produce one event with multiple evidence records;
-- two distinct same-day events for one company remain separate;
-- known syndicated copies do not manufacture independent corroboration;
-- malformed or unavailable extraction leaves evidence intact and visibly degrades evaluation;
-- a failed or empty news run records current coverage rather than inheriting old health;
-- an unexplained market move is surfaced without invented causation;
-- disclosure, news and market evidence can strengthen one assessment without creating duplicate alerts; and
-- attention, confidence, coverage and article count remain separate quantities.
-
-The UI remains an inspection surface during this step. It needs to expose the event, reason-code ledger, market context, coverage, provenance, article count, independent-source count and ambiguous-link state well enough to verify the decisions above; visual redesign remains deferred.
-
-### After Step 2
-
-Continue with user state, lifecycle and persisted summaries, then presentation polish, following the existing decisions and scenarios. Seeded fixtures (D18) and the calibration set (D4) continue to enter at the evidence boundary so they exercise the same path as live data.
+The thin mobile proof validates the shared contract and review flow. Broader mobile development is justified only after secure token storage and rotation are designed and the compact review projection has been validated on a physical device. Lifecycle and persisted summaries remain separate product work and are not prerequisites for these platform decisions.

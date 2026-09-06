@@ -96,7 +96,15 @@ def test_a_transport_failure_degrades() -> None:
     gemini = GeminiExtractor(api_key=SECRET, transport=httpx.MockTransport(handler))
 
     assert gemini.extract(evidence()) is None
-    assert gemini.last_failure == "transport-or-decode-failure"
+    assert gemini.last_failure == "transport-failure"
+
+
+def test_a_non_json_provider_response_is_a_decode_failure() -> None:
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200, text="not-json"))
+    gemini = GeminiExtractor(api_key=SECRET, transport=transport)
+
+    assert gemini.extract(evidence()) is None
+    assert gemini.last_failure == "response-decode-failure"
 
 
 def test_a_missing_credential_is_a_fact_not_an_error() -> None:

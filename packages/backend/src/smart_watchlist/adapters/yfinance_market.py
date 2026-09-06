@@ -14,6 +14,9 @@ incomplete sessions are dropped and the newest complete bar becomes the referenc
 
 *Adjusted and unadjusted closes are both kept.* The adjustment is what makes a split
 visible as mechanical rather than silently invisible (D14, scenario G).
+
+*The session range comes from the same frame as the close.* High and low are read from the
+row already fetched, so showing them costs no additional provider request.
 """
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ __all__ = ["SOURCE_NAME", "YFinanceMarketSource"]
 SOURCE_NAME = "market"
 
 _NSE_SUFFIX = ".NS"
-_LOOKBACK = "6mo"
+_LOOKBACK = "1y"
 """Long enough for a trailing baseline with room for holidays and suspensions."""
 
 
@@ -125,6 +128,11 @@ def _to_bars(frame: Any) -> list[Bar]:
                 volume=_number(row.get("Volume")) or 0.0,
                 split_ratio=_number(row.get("Stock Splits")) or 0.0,
                 dividend=_number(row.get("Dividends")) or 0.0,
+                # Same frame, same request. The provider already returns the session range
+                # beside the close, so reading it costs nothing — and a session where it is
+                # absent stays absent rather than being filled from the close.
+                high=_number(row.get("High")),
+                low=_number(row.get("Low")),
             )
         )
     return bars

@@ -1,98 +1,63 @@
-/**
- * The API view model, as the backend serves it.
- *
- * Mirrored here as types only. The frontend renders these verdicts; it never computes
- * one (DESIGN.md D2) — there is no scoring, no thresholding and no ranking in this
- * package, and there should never be.
- */
+/** Thin HTTP client over the generated v1 wire contract. */
 
-export type Attention =
-  | "HIGH"
-  | "MEDIUM"
-  | "LOW"
-  | "NO_MEANINGFUL_CHANGE"
-  | "UNABLE_TO_EVALUATE_RELIABLY";
+import { API_PREFIX } from "@smart-market-watchlist/shared";
+import type {
+  AccountView,
+  AssistantAnswerView,
+  MetaResponse,
+  ExplainerAnswerView,
+  ExplainerStatementView,
+  AssessmentView,
+  AssessmentsResponse as GeneratedAssessmentsResponse,
+  AttentionItemView,
+  CompleteReviewResponse,
+  FocusTagView,
+  PriceComparisonView,
+  PricePointView,
+  PriceSeriesView,
+  PriceSessionView,
+  WatchPointView,
+  PriceStatusView,
+  RemovedResponse,
+  ReviewLineView,
+  ReviewPageView,
+  UniverseCompanyView,
+  UniverseResponse,
+  WatchedCompanyView,
+  WatchlistResponse,
+} from "@smart-market-watchlist/shared";
 
-export type Confidence = "HIGH" | "MEDIUM" | "LOW";
+export type Account = AccountView;
+export type Assessment = AssessmentView;
+export type AssessmentsResponse = GeneratedAssessmentsResponse;
+export type Attention = AssessmentView["attention"];
+export type AttentionItem = AttentionItemView;
+export type Confidence = AssessmentView["confidence"];
+export type AssistantAnswer = AssistantAnswerView;
+export type Meta = MetaResponse;
+export type ExplainerAnswer = ExplainerAnswerView;
+export type ExplainerStatement = ExplainerStatementView;
+export type FocusTagInfo = FocusTagView;
+export type PriceComparison = PriceComparisonView;
+export type PricePoint = PricePointView;
+export type PriceRange = PriceComparisonView["range"];
+export type PriceSeries = PriceSeriesView;
+export type PriceSession = PriceSessionView;
+export type WatchPoint = WatchPointView;
+export type PriceStatus = PriceStatusView;
+export type ReviewLine = ReviewLineView;
+export type ReviewPage = ReviewPageView;
+export type UniverseCompany = UniverseCompanyView;
+export type WatchedCompany = WatchedCompanyView;
 
-export interface Reason {
-  code: string;
-  direction: "+" | "-";
-  contribution: number;
-  detail: string;
+export interface Interests {
+  reason?: string;
+  watch_for?: string;
+  tags?: string[];
 }
 
-export interface CoverageRecord {
-  source: string;
-  status: string;
-  detail: string;
-}
-
-export interface Coverage {
-  complete: boolean;
-  note: string;
-  records: CoverageRecord[];
-}
-
-export interface EvidenceRef {
-  source: string;
-  ref: string;
-  tier: string;
-  publisher: string;
-  subject_company: string;
-  published_at: string;
-  url: string;
-}
-
-/** Independent publishers, not article count (D13). Repetition is not confirmation. */
-export interface Corroboration {
-  article_count: number;
-  independent_source_count: number;
-  summary: string;
-  has_authoritative: boolean;
-}
-
-export interface Assessment {
-  event_id: string;
-  symbol: string;
-  company: string;
-  event_type: string;
-  description: string;
-  occurred_at: string;
-  attention: Attention;
-  confidence: Confidence;
-  score: number;
-  scoring_version: string;
-  reasons: Reason[];
-  coverage: Coverage;
-  corroboration: Corroboration;
-  evidence: EvidenceRef[];
-}
-
-/** Source health for the most recent ingest, independent of any assessment. */
-export interface SourceHealth {
-  run_id: string;
-  source: string;
-  started_at: string;
-  assessed_count: number;
-  healthy: boolean;
-  records: CoverageRecord[];
-}
-
-export interface AssessmentsResponse {
-  count: number;
-  /** `null` means we have never run — which is not the same as running and failing. */
-  source_health: SourceHealth | null;
-  assessments: Assessment[];
-}
-
-/**
- * Where the API lives. Configurable so a demo off the build machine does not need a
- * source edit; the default keeps `make run` working with no configuration at all.
- */
 export const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "http://localhost:8000";
 
-/** Human wording for a verdict. A conclusion and an admission never read alike. */
 export function attentionLabel(attention: Attention): string {
   switch (attention) {
     case "NO_MEANINGFUL_CHANGE":
@@ -104,122 +69,131 @@ export function attentionLabel(attention: Attention): string {
   }
 }
 
-/**
- * Fetch the ranked assessments and current source health.
- *
- * The order is the engine's answer to a product question and is rendered unchanged.
- * This module deliberately exposes no default sort of its own (DESIGN.md D2).
- */
-export async function fetchAssessments(limit = 50): Promise<AssessmentsResponse> {
-  const response = await fetch(`${API_BASE}/assessments?limit=${limit}`);
-  if (!response.ok) throw new Error(`API returned ${response.status}`);
-  return (await response.json()) as AssessmentsResponse;
-}
-
-/** A sort the reader asked for. `null` means "leave the backend's ranking alone". */
-export type ViewSort = "company" | "recency" | "confidence" | null;
-
-const CONFIDENCE_ORDER: Record<Confidence, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-
-/**
- * Apply a reader-selected view sort.
- *
- * Canonical product ranking belongs to the backend; this exists only for sorts a person
- * explicitly asks for. With no selection it returns the given order untouched — it must
- * never become a second, divergent answer to "what deserves attention first".
- */
-export function applyViewSort(assessments: Assessment[], sort: ViewSort): Assessment[] {
-  if (sort === null) return assessments;
-  const sorted = [...assessments];
-  switch (sort) {
-    case "company":
-      return sorted.sort((a, b) => a.symbol.localeCompare(b.symbol));
-    case "recency":
-      return sorted.sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
-    case "confidence":
-      return sorted.sort(
-        (a, b) => CONFIDENCE_ORDER[a.confidence] - CONFIDENCE_ORDER[b.confidence],
-      );
-  }
-}
-
-
-// --- user state (Step 4) -------------------------------------------------------
-
-export interface Account {
-  user_id: string;
-  email: string;
-}
-
-export interface WatchedCompany {
-  symbol: string;
-  company: string;
-  coverage_tier: string;
-  added_at: string;
-  watched_from: string;
-}
-
-export interface ReviewLine {
-  symbol: string;
-  company: string;
-  coverage_tier: string;
-  state: "changed" | "quiet" | "unable" | "new";
-  detail: string;
-  assessments: Assessment[];
-}
-
-export interface ReviewPage {
-  review_id: string;
-  previous_checkpoint: string | null;
-  review_cutoff: string;
-  attention_count: number;
-  changed: ReviewLine[];
-  newly_added: ReviewLine[];
-  unable: ReviewLine[];
-  quiet: ReviewLine[];
-}
-
-/**
- * Every private call sends the session cookie and nothing else.
- *
- * The client holds no user id, no checkpoint and no cutoff it could alter: it returns a
- * review's identity and the server resolves what that review committed to.
- */
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${API_BASE}${API_PREFIX}${path}`, {
     ...init,
     credentials: "include",
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { detail?: unknown };
-    throw new Error(typeof body.detail === "string" ? body.detail : `Request failed (${response.status})`);
+    throw new Error(
+      typeof body.detail === "string" ? body.detail : `Request failed (${response.status})`,
+    );
   }
   return (await response.json()) as T;
+}
+
+export async function fetchAssessments(limit = 50): Promise<AssessmentsResponse> {
+  return call<AssessmentsResponse>(`/assessments?limit=${limit}`);
 }
 
 export const auth = {
   me: () => call<Account>("/auth/me"),
   register: (email: string, password: string) =>
-    call<Account>("/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
+    call<Account>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
   login: (email: string, password: string) =>
     call<Account>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   logout: () => call<{ status: string }>("/auth/logout", { method: "POST" }),
 };
 
+export const universe = {
+  list: () => call<UniverseResponse>("/universe"),
+};
+
+export const intelligence = {
+  all: (limit = 400) => call<AssessmentsResponse>(`/assessments?limit=${limit}`),
+};
+
 export const watchlist = {
-  list: () => call<{ companies: WatchedCompany[] }>("/watchlist"),
-  add: (symbol: string) =>
-    call<WatchedCompany>("/watchlist", { method: "POST", body: JSON.stringify({ symbol }) }),
+  list: () => call<WatchlistResponse>("/watchlist"),
+  add: (symbol: string, interests: Interests = {}) =>
+    call<WatchedCompany>("/watchlist", {
+      method: "POST",
+      body: JSON.stringify({ symbol, ...interests }),
+    }),
   remove: (symbol: string) =>
-    call<{ symbol: string; removed: boolean }>(`/watchlist/${symbol}`, { method: "DELETE" }),
+    call<RemovedResponse>(`/watchlist/${symbol}`, { method: "DELETE" }),
+};
+
+export const focusTags = {
+  list: () => call<{ tags: FocusTagInfo[] }>("/focus-tags"),
+};
+
+export const prices = {
+  status: () => call<{ statuses: PriceStatus[] }>("/prices/status"),
+  get: (symbol: string, range: PriceRange) =>
+    call<PriceComparison>(`/prices/${symbol}?range=${range}`),
 };
 
 export const review = {
   open: () => call<ReviewPage>("/review"),
   complete: (reviewId: string) =>
-    call<{ checkpoint: string; outcome: string }>("/review/complete", {
+    call<CompleteReviewResponse>("/review/complete", {
       method: "POST",
       body: JSON.stringify({ review_id: reviewId }),
     }),
+};
+
+/**
+ * Ask a bounded question about one company (D35).
+ *
+ * The answer is composed server-side from records already assessed. This client sends a
+ * question and renders what comes back; it does not summarise, rephrase or fill gaps —
+ * an "I don't have enough evidence" is the answer, not a case to paper over.
+ */
+export const explainer = {
+  ask: (symbol: string, question: string) =>
+    call<ExplainerAnswer>(`/companies/${symbol}/explain`, {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    }),
+};
+
+/**
+ * The conversational assistant (D40).
+ *
+ * One call, into the system's own intelligence. `symbol` is UI context — the company the
+ * reader is looking at — not part of the question, so "why did this fall?" needs no
+ * ticker. Everything in the reply was decided by the deterministic core before this
+ * client saw it.
+ */
+export const assistant = {
+  ask: (question: string, symbol?: string) =>
+    call<AssistantAnswer>("/assistant/ask", {
+      method: "POST",
+      body: JSON.stringify(symbol ? { question, symbol } : { question }),
+    }),
+};
+
+/**
+ * Levels the reader asked to be told about (D37).
+ *
+ * Set here, settled by the scheduled cycle against stored end-of-day closes, and surfaced
+ * on the next visit. Nothing in this client decides whether a level was reached.
+ */
+export const watchPoints = {
+  list: () => call<{ points: WatchPoint[] }>("/watch-points"),
+  add: (symbol: string, level: number, note: string) =>
+    call<WatchPoint>(`/companies/${symbol}/watch-points`, {
+      method: "POST",
+      body: JSON.stringify({ level, note }),
+    }),
+  acknowledge: (pointId: string) =>
+    call<WatchPoint>(`/watch-points/${pointId}/acknowledge`, { method: "POST" }),
+  remove: (pointId: string) =>
+    call<RemovedResponse>(`/watch-points/${pointId}`, { method: "DELETE" }),
+};
+
+/** What this server is. Read once, so a client can label simulated data (D42). */
+export const meta = {
+  get: () => call<Meta>("/meta"),
+};
+
+/** Restore the judge scenario. Only exists when the server started in judge mode. */
+export const judge = {
+  reset: () => call<{ status: string }>("/judge/reset", { method: "POST" }),
 };

@@ -1,0 +1,15 @@
+**/node_modules
+**/.venv
+**/dist
+**/.astro
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.artifacts
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+*.ENV
+.git

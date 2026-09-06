@@ -115,6 +115,9 @@ class GeminiExtractor:
         self._timeout = timeout
         self.last_failure: str | None = None
         """Why the most recent call produced nothing. Never contains the credential."""
+        self.last_raw_output = ""
+        self.last_input_tokens: int | None = None
+        self.last_output_tokens: int | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -123,6 +126,9 @@ class GeminiExtractor:
 
     def extract(self, evidence: Evidence) -> ExtractedEvent | None:
         self.last_failure = None
+        self.last_raw_output = ""
+        self.last_input_tokens = None
+        self.last_output_tokens = None
         if not self._api_key:
             self.last_failure = "no-credential"
             return None
@@ -168,15 +174,26 @@ class GeminiExtractor:
                     self.last_failure = "rate-limited-or-quota-exhausted"
                     return None
                 response.raise_for_status()
+                self.last_raw_output = response.text
                 body = response.json()
         except httpx.HTTPStatusError as exc:
             # Deliberately records the status only. A provider error body can echo the
             # request, and the request carries the credential.
             self.last_failure = f"http-{exc.response.status_code}"
             return None
-        except (httpx.HTTPError, ValueError):
-            self.last_failure = "transport-or-decode-failure"
+        except httpx.HTTPError:
+            self.last_failure = "transport-failure"
             return None
+        except ValueError:
+            self.last_failure = "response-decode-failure"
+            return None
+
+        usage = body.get("usageMetadata") if isinstance(body, dict) else None
+        if isinstance(usage, dict):
+            prompt = usage.get("promptTokenCount")
+            completion = usage.get("candidatesTokenCount")
+            self.last_input_tokens = prompt if isinstance(prompt, int) else None
+            self.last_output_tokens = completion if isinstance(completion, int) else None
 
         event = _to_event(body, evidence)
         if event is None:

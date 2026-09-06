@@ -1,5 +1,146 @@
 # Changelog
 
+## 2026-09-06 — Shared platform contract, mobile proof and measured validation
+
+**What:** Product routes moved behind `/v1` with Pydantic response schemas and one generated,
+committed TypeScript contract shared by web and mobile. A thin Expo proof renders the real
+Needs Attention flow and company detail, and submits the same server-issued review cutoff.
+An isolated extraction harness now compares rules and configured providers case by case,
+including grounding, attribution, schema failures, fallback, latency, tokens and cost. A
+repeatable scale validation records latency, throughput and peak memory against explicit
+targets.
+
+**Measured:** the current 21-case rule path produced 100% precision and 64.3% recall; all
+four deterministic contradiction gates passed. Gemini 3.6 Flash was quota-exhausted on all
+21 attempts, and the separately reported operational chain used the rule fallback every
+time. Local domain measurements passed the review and chart CPU targets, but did not include
+network time, deployed HTTP, SQLite contention or a complete live ingestion cycle.
+
+**Why:** web and mobile must not disagree about ranking, coverage or checkpoints, and adding
+infrastructure without observing a bottleneck would replace evidence with architecture
+theatre. The generated contract prevents client drift; the harness and load report state
+exactly what was and was not proven.
+
+**Rejected:** a complete mobile app, a mobile-specific backend, model-blended quality scores,
+and pre-emptive Postgres/Redis/queue migration. Secure mobile credentials, full-cycle timing
+and measured writer contention are prerequisites for those decisions.
+
+**Fixed during review:** SQLite connections now close deterministically instead of relying
+on garbage collection, and price requests read bars persisted by scheduled market ingestion
+rather than making an external provider call during a page view. The 1,490 resource warnings
+in the first full test run fell to one unrelated TestClient deprecation warning.
+
+## 2026-09-06 — Watchlist board, and news separated by type
+
+**What:** The interface took its visual language from a premarket watchlist board — dark
+terminal palette, numbered tiles, a monospaced header strip, a ranking rail — and its
+content from what the system actually holds. A company's record in the detail panel is now
+grouped by **kind** (exchange disclosures, market observations, news) and news is split
+again by the engine's own **event type**.
+
+**Why the board carries developments and not prices:** the reference is full of quotes,
+percentage moves and charts. The backend exposes none of those as display fields, and
+inventing them would turn an attention system into the generic dashboard the product
+exists not to be. So the tiles keep the board's shape and answer a different question —
+what is the latest thing that happened here — and the strip where a trading board shows a
+market snapshot shows coverage instead: watching, new, quiet, degraded, window start.
+
+**Why grouping matters more than it sounds:** eighteen developments in one stream is a
+wall. Split by kind, a filing stops looking like a rumour; split by type, the dominant
+story leads — "Expansion · 6" ahead of "Regulatory Action · 1". Grouping is presentational:
+kind comes from the evidence, type from the engine, and order inside a group is unchanged.
+
+**Fixed while looking at it:** row ordering put `changed` above `newly added` regardless of
+attention, so a HIGH development ranked below a LOW one because its company was added more
+recently. Attention now leads. The retired row component and its styles were removed rather
+than left behind, and the repeated coverage-gap line was marked rather than shouted.
+
+**Rejected:**
+
+- *Charts, prices, percentage moves, a market-read gauge.* No data behind any of them.
+  Copying the shapes would have meant fabricating the content.
+- *Sorting the detail panel by attention.* It is a record of what happened, so it reads
+  newest-first inside each group; the views that rank are the ones that rank.
+- *Grouping by publisher.* Corroboration already answers "how many independent sources";
+  what a reader needs first is what kind of thing happened.
+
+## 2026-09-05 — Watchlist interface
+
+**What:** The frontend became a watchlist rather than a single scrolling review. A compact
+header with two views: **Watchlist**, showing every followed company with the latest
+development we hold, and **Needs attention**, showing only what is new since the last
+completed review. Selecting a company opens a panel with its full record — developments,
+why each matters, corroboration, what could not be checked, timestamps and source links.
+Search adds companies from the curated universe, which the backend now exposes at
+`/universe` so the interface does not keep a second copy of it.
+
+**Why the watchlist leads with a development rather than a price:** the backend has no
+price or percentage display fields, and inventing them would be the fastest way to turn
+this into the generic dashboard the product exists not to be. A row therefore answers
+"what is the latest thing that happened here", which is the question the system can
+actually answer.
+
+**The quiet case is the interesting one.** A company with nothing new still shows its most
+recent known development, so an uneventful day reads as information rather than as an
+empty screen.
+
+**Boundary held:** the frontend filters by company and formats for reading. It does not
+score, rank or re-judge — the engine's order is read as given, its verdicts are copied
+verbatim, and the one local ordering decision, which development is most *recent*, is a
+question about time rather than attention. Row-derivation lives in a pure module with its
+own tests.
+
+**Found while looking at it:** the badge column rendered on the wrong side (a `grid-row`
+span sent auto-placement into the first column); attention rows had no `flex: 1` on their
+body so badges sat inline with the headline; corroboration appeared twice, once as a
+bullet and once as a fact line; internal source keys like `nse-disclosures` were shown to
+readers; and fact lines were styled as uppercase headings.
+
+**Rejected:**
+
+- *Showing prices or percentage moves.* Not available from the backend as display data;
+  fabricating them was explicitly out of bounds and would misrepresent the product.
+- *Hard-coding the supported universe in the frontend.* A second copy drifts; `/universe`
+  exposes the curated list instead.
+- *Re-sorting events by attention inside the detail panel.* The panel is a record of what
+  happened, so it reads newest-first; the engine's ranking governs the views that rank.
+
+## 2026-09-05 — Login-free demo and the review dashboard
+
+**What:** The dashboard opens directly on the review. A `DEMO_MODE` switch (on by
+default) resolves callers with no session to one persistent server-owned account, and the
+frontend became a real interface: watchlist add/remove, an attention summary, cards ranked
+by what they ask of the reader, and confidence, coverage, corroboration and provenance
+each one disclosure away.
+
+**Why bypass rather than remove:** the sign-in wall was the first thing between a viewer
+and the product, but deleting authentication would have made the review window fictional —
+a checkpoint needs an owner. The demo account is an ordinary row, so *"since you last
+checked"* is genuinely computed. A real session still wins, so the authenticated path
+stays exercised rather than becoming dead code, and `DEMO_MODE=off` restores the wall
+exactly as it was.
+
+**Two things the tests caught:**
+
+- `is_demo` was derived from the *presence* of a cookie rather than a valid session, so a
+  forged or expired cookie reported the caller as signed in — the interface would have
+  offered to sign out of an account nobody signed into.
+- The demo account's address was `demo@localhost`, which `EmailStr` rejects, so the login
+  endpoint returned 422 before reaching the credential check. It now uses the IANA-reserved
+  `demo@example.com`: well-formed, unregistrable (the unique constraint refuses it), and
+  with a stored hash that is not a hash of anything, so no password can match.
+
+**Engine untouched.** No scoring, linking, coverage or extraction logic changed.
+
+**Rejected:**
+
+- *Deleting authentication for the demo.* Checkpoints need an owner; a demo without real
+  user state would demonstrate a product that does not exist.
+- *A fake in-memory demo user.* Its watchlist and checkpoint would reset on restart, and
+  the review window is the thing most worth showing.
+- *Defaulting `DEMO_MODE` off.* The point of this build is to be shown; the safety note
+  belongs in the README and status, which is where it is.
+
 ## 2026-09-05 — Fallback subject safety
 
 **What:** The deterministic rule fallback no longer attributes an article to a company

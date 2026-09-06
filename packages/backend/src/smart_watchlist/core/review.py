@@ -85,7 +85,13 @@ class Review:
 
     @property
     def attention_count(self) -> int:
-        return sum(len(line.assessments) for line in self.changed)
+        """Everything surfaced to the reader, whichever section carries it.
+
+        A newly-added company's line holds the assessments that arrived after the user
+        started watching it. Counting only ``changed`` reported "nothing is asking for
+        your attention" while holding assessed changes the reader had never seen.
+        """
+        return sum(len(line.assessments) for line in (*self.changed, *self.newly_added))
 
 
 def assemble(
@@ -152,9 +158,8 @@ def _line(
             coverage_tier=tier_name,
             state="new",
             detail=(
-                "Watched from "
-                f"{membership.added_at.isoformat()}. Nothing before that is reported as "
-                "missed, because we were not watching it for you yet."
+                f"Watched from {_readable(membership.added_at)}. Nothing before that is "
+                "reported as missed, because we were not watching it for you yet."
             ),
             assessments=tuple(in_window),
         )
@@ -195,6 +200,15 @@ def _line(
         state="quiet",
         detail=detail,
     )
+
+
+def _readable(moment: datetime) -> str:
+    """A timestamp a person can read. The precise value is still what bounds the window.
+
+    Wording, not logic: the observation boundary is the stored ``added_at`` and nothing
+    here rounds or reinterprets it.
+    """
+    return moment.strftime("%d %b %Y, %H:%M UTC")
 
 
 def _later(a: datetime | None, b: datetime | None) -> datetime | None:

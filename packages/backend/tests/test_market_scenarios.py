@@ -68,6 +68,7 @@ def test_scenario_a_an_unexplained_move_is_reported_without_a_manufactured_cause
     assert "UNUSUAL_PRICE_MOVE" in codes
     # Nothing in the surfaced text asserts a reason for the move.
     assert "because" not in movement[0].event.description.lower()
+    assert store.price_bars([SUBJECT])[SUBJECT] == bars
 
 
 def test_the_no_company_event_claim_requires_having_looked(tmp_path) -> None:

@@ -23,11 +23,11 @@ from ..core.extraction import ExtractedEvent
 if TYPE_CHECKING:
     from ..core.models import Evidence
 
-__all__ = ["EXTRACTOR_NAME", "PROMPT_VERSION", "ClaudeExtractor"]
+__all__ = ["EXTRACTOR_NAME", "MODEL", "PROMPT_VERSION", "ClaudeExtractor"]
 
 PROMPT_VERSION = "extract-event/v1"
-_MODEL = "claude-sonnet-5"
-EXTRACTOR_NAME = f"anthropic/{_MODEL}/{PROMPT_VERSION}"
+MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
+EXTRACTOR_NAME = f"anthropic/{MODEL}/{PROMPT_VERSION}"
 
 _ENDPOINT = "https://api.anthropic.com/v1/messages"
 _API_VERSION = "2023-06-01"
@@ -80,10 +80,17 @@ class ClaudeExtractor:
         api_key: str | None = None,
         transport: httpx.BaseTransport | None = None,
         timeout: float = 30.0,
+        model: str | None = None,
     ) -> None:
+        self._model = model or MODEL
+        self.name = f"anthropic/{self._model}/{PROMPT_VERSION}"
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self._transport = transport
         self._timeout = timeout
+        self.last_failure: str | None = None
+        self.last_raw_output = ""
+        self.last_input_tokens: int | None = None
+        self.last_output_tokens: int | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -91,11 +98,16 @@ class ClaudeExtractor:
         return bool(self._api_key)
 
     def extract(self, evidence: Evidence) -> ExtractedEvent | None:
+        self.last_failure = None
+        self.last_raw_output = ""
+        self.last_input_tokens = None
+        self.last_output_tokens = None
         if not self._api_key:
+            self.last_failure = "no-credential"
             return None
 
         payload = {
-            "model": _MODEL,
+            "model": self._model,
             "max_tokens": 1024,
             "system": _INSTRUCTIONS,
             "messages": [
@@ -123,11 +135,28 @@ class ClaudeExtractor:
                     json=payload,
                 )
                 response.raise_for_status()
+                self.last_raw_output = response.text
                 body = response.json()
-        except (httpx.HTTPError, ValueError):
+        except httpx.HTTPStatusError as exc:
+            self.last_failure = f"http-{exc.response.status_code}"
+            return None
+        except httpx.HTTPError:
+            self.last_failure = "transport-failure"
+            return None
+        except ValueError:
+            self.last_failure = "response-decode-failure"
             return None
 
-        return _to_event(body, evidence)
+        usage = body.get("usage") if isinstance(body, dict) else None
+        if isinstance(usage, dict):
+            prompt = usage.get("input_tokens")
+            completion = usage.get("output_tokens")
+            self.last_input_tokens = prompt if isinstance(prompt, int) else None
+            self.last_output_tokens = completion if isinstance(completion, int) else None
+        result = _to_event(body, evidence)
+        if result is None:
+            self.last_failure = "unusable-response"
+        return result
 
 
 def _to_event(body: object, evidence: Evidence) -> ExtractedEvent | None:

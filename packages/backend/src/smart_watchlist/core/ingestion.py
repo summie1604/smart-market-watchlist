@@ -19,11 +19,19 @@ from typing import TYPE_CHECKING
 
 from .models import Coverage, CoverageRecord, CoverageStatus, IngestRun, RunStatus
 from .pipeline import run_disclosure_pipeline, run_market_pipeline, run_news_pipeline
+from .watchpoints import evaluate
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from .ports import AssessmentStore, DisclosureSource, Extractor, MarketSource, NewsSource
+    from .ports import (
+        AssessmentStore,
+        DisclosureSource,
+        Extractor,
+        MarketSource,
+        NewsSource,
+        WatchPointStore,
+    )
 
 __all__ = ["CycleResult", "IngestionSources", "run_cycle"]
 
@@ -49,6 +57,9 @@ class CycleResult:
     finished_at: datetime | None = None
     runs: list[IngestRun] = field(default_factory=list)
     assessed: int = 0
+    triggered: int = 0
+    """Watch points satisfied by this cycle's stored bars. Not assessments — a reader's
+    own level being crossed is private state, never a shared verdict (D37)."""
 
     @property
     def healthy_families(self) -> list[str]:
@@ -71,6 +82,7 @@ def run_cycle(
     sources: IngestionSources,
     store: AssessmentStore,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    watch_points: WatchPointStore | None = None,
 ) -> CycleResult:
     """Fetch, evaluate and persist for every source family.
 
@@ -115,6 +127,10 @@ def run_cycle(
             failed = _record_failure(store, family, result.started_at, now(), error)
             result.runs.append(failed)
             log.exception("ingest.family.failed family=%s", family)
+
+    # After the families, because it reads the bars they just stored and nothing else.
+    # A reader's level is settled by the same end-of-day data every other verdict uses.
+    result.triggered = _settle_watch_points(store, watch_points)
 
     result.finished_at = now()
     log.info(
@@ -170,3 +186,37 @@ def _record_failure(
     )
     store.save_run(run)
     return run
+
+
+def _settle_watch_points(store: AssessmentStore, points: WatchPointStore | None) -> int:
+    """Check every open watch point against stored bars, and record what crossed.
+
+    Reads persisted bars rather than fetching: the cycle has just written them, and a
+    second fetch would be a second opinion about the same session. Never raises — a
+    failure here must not turn a healthy ingestion cycle into a failed one, because the
+    families' own health is a claim about sources and this is not.
+    """
+    if points is None:
+        return 0
+    try:
+        open_points = points.open_watch_points()
+        if not open_points:
+            return 0
+        bars = store.price_bars(sorted({point.symbol for point in open_points}))
+        settled = 0
+        for point in open_points:
+            trigger = evaluate(point, bars.get(point.symbol, []))
+            if trigger is not None and points.mark_triggered(
+                point.point_id, trigger.on, trigger.close
+            ):
+                settled += 1
+                log.info(
+                    "watchpoint.triggered symbol=%s level=%s on=%s",
+                    point.symbol,
+                    point.level,
+                    trigger.on.isoformat(),
+                )
+        return settled
+    except Exception:
+        log.exception("watchpoint.settle.failed")
+        return 0

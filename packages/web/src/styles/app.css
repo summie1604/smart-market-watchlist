@@ -1,0 +1,1563 @@
+/* Smart Market Watchlist — terminal-style interface.
+ *
+ * Dark board, one accent per attention level. The visual language comes from a premarket
+ * watchlist board; the content deliberately does not. Prices appear in exactly one place —
+ * inside a company's detail, as a rebased comparison against its benchmarks — because a
+ * chart on the main surface would make price the subject, and the argument of this product
+ * is that price is one signal among several and often the slowest.
+ *
+ * Layout is mobile-first: one column, then two, then three. Every interactive control is
+ * reachable by keyboard with a visible focus ring, and no meaning is carried by colour
+ * alone — every attention level is also spelled out in words.
+ */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #07090a;
+  --panel: #0e1214;
+  --panel-2: #121719;
+  --line: #1e2629;
+  --line-bright: #2c383c;
+
+  --text: #e8efe9;
+  --muted: #8fa39a;
+  --faint: #7d9187;  /* 5.6:1 on --panel; was #607068 at 3.6:1 */
+
+  --high: #ff4d3d;
+  --high-dim: #3a1512;
+  --medium: #ffb020;
+  --medium-dim: #3a2a08;
+  --low: #22c55e;
+  --low-dim: #0d2c19;
+  --unable: #d4a017;
+  --unable-dim: #33270a;
+  --quiet: #78897f;  /* 5.1:1 on --panel; was #5b6b64 at 3.4:1 */
+  --quiet-dim: #161c1a;
+  --accent: #22c55e;
+
+  --r: 6px;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* --- board header ---------------------------------------------------------- */
+
+.topbar { border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 20; }
+.topbar-inner { max-width: 78rem; margin: 0 auto; padding: 0.6rem 1rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+
+.brand { font-family: var(--mono); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 0.95rem; margin-right: auto; }
+.brand span { display: block; font-family: system-ui, sans-serif; font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 0.72rem; color: var(--faint); }
+
+.nav { display: flex; gap: 0.3rem; }
+.nav button {
+  font-family: var(--mono); font-size: 0.76rem; letter-spacing: 0.05em; text-transform: uppercase;
+  border: 1px solid var(--line-bright); background: transparent; color: var(--muted);
+  padding: 0.35rem 0.7rem; border-radius: var(--r); cursor: pointer;
+  min-height: 2rem;
+}
+.nav button:hover { color: var(--text); border-color: var(--accent); }
+.nav button[aria-current="true"] { background: var(--accent); border-color: var(--accent); color: #04140a; font-weight: 700; }
+.nav .count { margin-left: 0.35rem; padding: 0 0.3rem; border-radius: 3px; background: var(--high); color: #fff; font-size: 0.7rem; }
+.nav button[aria-current="true"] .count { background: #04140a; color: var(--accent); }
+
+/* market-snapshot strip: coverage, not prices */
+.strip { border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.strip-inner { max-width: 78rem; margin: 0 auto; padding: 0.4rem 1rem; display: flex; gap: 1.25rem; flex-wrap: wrap; font-family: var(--mono); font-size: 0.72rem; color: var(--faint); }
+.strip b { color: var(--muted); font-weight: 600; letter-spacing: 0.04em; }
+.strip .ok { color: var(--low); }
+.strip .bad { color: var(--high); }
+
+/* On a phone the counters wrap to three rows and push the answer below the fold. One
+   scrolling row keeps every count reachable — nothing is dropped — while the thing the
+   product exists to say stays first on screen. */
+@media (max-width: 40rem) {
+  .strip-inner { flex-wrap: nowrap; overflow-x: auto; gap: 1rem; scrollbar-width: none; }
+  .strip-inner::-webkit-scrollbar { display: none; }
+  .strip-inner > span { flex: 0 0 auto; }
+}
+
+.main { max-width: 84rem; margin: 0 auto; padding: 1rem; }
+
+/* --- controls -------------------------------------------------------------- */
+
+.toolbar { display: flex; gap: 0.5rem; margin-bottom: 0.9rem; }
+.search { position: relative; flex: 1; }
+input[type="search"], input[type="text"] {
+  width: 100%; padding: 0.5rem 0.7rem; font: inherit; font-family: var(--mono); font-size: 0.82rem;
+  border: 1px solid var(--line-bright); border-radius: var(--r); background: var(--panel); color: var(--text);
+}
+input::placeholder { color: var(--faint); }
+input:focus-visible, button:focus-visible, select:focus-visible, textarea:focus-visible,
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+button { font: inherit; padding: 0.45rem 0.75rem; border-radius: var(--r); cursor: pointer; border: 1px solid var(--line-bright); background: var(--panel); color: var(--text); }
+button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+/* A pressed or current control is already filled with the accent, so the generic hover
+   colour would paint its label the same green as its background. State wins over hover. */
+button[aria-pressed="true"]:hover,
+button[aria-current="true"]:hover { color: #04140a; }
+button:disabled { opacity: 0.4; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #04140a; font-weight: 700; }
+button.primary:hover:not(:disabled) { opacity: 0.9; color: #04140a; }
+/* A comfortable target at every width, not only on a phone. */
+button.ghost { border-color: transparent; background: none; color: var(--faint); font-size: 0.72rem; padding: 0.3rem 0.4rem; min-height: 2rem; }
+button.ghost:hover { color: var(--high); border-color: transparent; }
+
+.suggestions { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30; background: var(--panel); border: 1px solid var(--line-bright); border-radius: var(--r); overflow: hidden; }
+.suggestions button { display: flex; width: 100%; gap: 0.6rem; align-items: baseline; text-align: left; border: 0; border-radius: 0; background: none; padding: 0.5rem 0.7rem; }
+.suggestions button:hover { background: var(--panel-2); color: var(--text); }
+.suggestions .sym { font-family: var(--mono); font-weight: 700; min-width: 6rem; }
+.suggestions .co { color: var(--faint); font-size: 0.82rem; }
+
+/* --- the board ------------------------------------------------------------- */
+
+.board { display: grid; gap: 0.75rem; grid-template-columns: 1fr; }
+@media (min-width: 56rem) { .board { grid-template-columns: 1fr 17rem; align-items: start; } }
+
+/* The board adapts to the width it actually has, not to a guess about the device.
+ *
+ * `auto-fill` with a comfortable minimum means a half-width window, a split screen and a
+ * phone all reach a single column on their own, and a wide display earns a third one —
+ * without a breakpoint list that has to be maintained against real furniture. The
+ * `min(100%, …)` guard stops the minimum from overflowing a container narrower than it. */
+.tiles {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr));
+}
+
+.tile {
+  position: relative; display: flex; flex-direction: column; gap: 0.4rem;
+  background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--quiet);
+  border-radius: var(--r); padding: 0.7rem 0.75rem 0.6rem;
+}
+.tile[data-tone="HIGH"] { border-top-color: var(--high); }
+.tile[data-tone="MEDIUM"] { border-top-color: var(--medium); }
+.tile[data-tone="LOW"] { border-top-color: var(--low); }
+.tile[data-tone="UNABLE_TO_EVALUATE_RELIABLY"] { border-top-color: var(--unable); }
+.tile[data-tone="NEW"] { border-top-color: var(--accent); }
+/* The card responds as one object, because it behaves as one. */
+.tile:hover { border-color: var(--line-bright); background: var(--panel-2); }
+.tile:has(.tile-link:focus-visible) { border-color: var(--accent); }
+
+/* The whole card is one link.
+ *
+ * `.tile-link::after` stretches over the card, so a click anywhere that is not another
+ * control opens the company. Everything that has its own behaviour is raised above that
+ * overlay — the trace, the expander, the expanded text and remove — which is what keeps
+ * "click the box" and "use the controls in the box" from fighting.
+ */
+.tile-link {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+.tile-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r);
+}
+.tile-link:hover .tile-sym { color: var(--accent); }
+.tile-link:focus-visible { outline: none; }
+.tile-link:focus-visible::after {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Above the overlay: these are not "open the company". */
+.tile .price-status,
+.tile .tile-more,
+.tile .tile-detail,
+.tile .tile-foot .ghost {
+  position: relative;
+  z-index: 1;
+}
+
+.tile-body { display: flex; flex-direction: column; gap: 0.35rem; flex: 1; min-width: 0; }
+
+.tile-head { display: flex; align-items: baseline; gap: 0.45rem; }
+.rank {
+  font-family: var(--mono); font-size: 0.68rem; font-weight: 700;
+  background: var(--quiet-dim); color: var(--muted); border-radius: 3px;
+  padding: 0.05rem 0.32rem; border: 1px solid var(--line-bright);
+}
+.tile[data-tone="HIGH"] .rank { background: var(--high-dim); color: var(--high); border-color: var(--high); }
+.tile[data-tone="MEDIUM"] .rank { background: var(--medium-dim); color: var(--medium); border-color: var(--medium); }
+.tile[data-tone="LOW"] .rank { background: var(--low-dim); color: var(--low); border-color: var(--low); }
+.tile[data-tone="UNABLE_TO_EVALUATE_RELIABLY"] .rank { background: var(--unable-dim); color: var(--unable); border-color: var(--unable); }
+
+.tile-sym { font-family: var(--mono); font-weight: 700; font-size: 1rem; letter-spacing: 0.02em; }
+.tile-co { color: var(--faint); font-size: 0.74rem; margin-left: auto; text-align: right; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tile-dev { margin: 0; font-size: 0.86rem; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tile-dev.none { color: var(--faint); font-style: italic; }
+
+.price-status { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem 0.5rem; font-family: var(--mono); }
+.price-status .price { font-size: 1rem; font-weight: 700; }
+.price-status .move { font-size: 0.72rem; color: var(--muted); }
+.price-status .move.up { color: var(--low); }
+.price-status .move.down { color: var(--high); }
+.price-status .as-of { width: 100%; font-size: 0.63rem; color: var(--faint); }
+.price-status.unavailable { color: var(--faint); font-size: 0.75rem; }
+.sparkline { width: 4.5rem; height: 1.3rem; margin-left: auto; overflow: visible; }
+.sparkline path { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+
+.tile-stats { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; font-family: var(--mono); font-size: 0.68rem; color: var(--faint); border-top: 1px dashed var(--line); padding-top: 0.4rem; }
+/* Three badges and a control. They wrap rather than overflow, because the number of
+   badges is a property of the record and not something the layout gets to assume. */
+.tile-foot { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.tile-foot .ghost { margin-left: auto; }
+
+.badge {
+  display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px;
+  font-family: var(--mono); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  border: 1px solid transparent; white-space: nowrap;
+}
+.badge[data-tone="HIGH"] { background: var(--high-dim); color: var(--high); border-color: var(--high); }
+.badge[data-tone="MEDIUM"] { background: var(--medium-dim); color: var(--medium); border-color: var(--medium); }
+.badge[data-tone="LOW"] { background: var(--low-dim); color: var(--low); border-color: var(--low); }
+.badge[data-tone="UNABLE_TO_EVALUATE_RELIABLY"] { background: var(--unable-dim); color: var(--unable); border-color: var(--unable); }
+.badge[data-tone="QUIET"] { background: var(--quiet-dim); color: var(--quiet); border-color: var(--line-bright); }
+.badge[data-tone="NEW"] { background: var(--low-dim); color: var(--accent); border-color: var(--accent); }
+.badge.soft { background: transparent; color: var(--faint); border-color: var(--line-bright); font-weight: 500; letter-spacing: 0.03em; }
+
+/* --- side rail ------------------------------------------------------------- */
+
+.rail { display: grid; gap: 0.75rem; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 0.75rem; }
+.card h3 { margin: 0 0 0.5rem; font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.card p { margin: 0; font-size: 0.82rem; color: var(--muted); }
+.headline-figure { font-family: var(--mono); font-size: 1.55rem; font-weight: 700; line-height: 1.1; color: var(--text); }
+.headline-figure.calm { color: var(--muted); }
+
+.ranking { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
+.ranking li { display: flex; align-items: center; gap: 0.45rem; font-size: 0.8rem; }
+.ranking .sym { font-family: var(--mono); font-weight: 700; }
+.ranking .tail { margin-left: auto; }
+
+/* --- detail ---------------------------------------------------------------- */
+
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 40; border: 0; }
+.detail { position: fixed; z-index: 50; background: var(--panel); display: flex; flex-direction: column; inset: 0 0 0 auto; width: min(38rem, 100%); border-left: 1px solid var(--line-bright); }
+.page-detail { position: relative; inset: auto; z-index: auto; width: 100%; max-width: 78rem; min-height: 100vh; margin: 0 auto; border-left: 0; }
+@media (max-width: 40rem) { .detail { inset: 3.2rem 0 0 0; width: 100%; border-left: 0; border-radius: 10px 10px 0 0; } }
+
+.detail-head { padding: 0.8rem 0.9rem; border-bottom: 1px solid var(--line); display: flex; align-items: flex-start; gap: 0.7rem; }
+.detail-head h2 { margin: 0; font-family: var(--mono); font-size: 1rem; letter-spacing: 0.02em; }
+.detail-head p { margin: 0.15rem 0 0; color: var(--faint); font-size: 0.78rem; }
+.detail-body { overflow-y: auto; padding: 0.8rem 0.9rem 2.5rem; }
+
+.group { margin-bottom: 1.1rem; }
+.group-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.45rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--line); }
+.group-head h3 { margin: 0; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.group-head .n { font-family: var(--mono); font-size: 0.7rem; color: var(--faint); margin-left: auto; }
+.type-head { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); margin: 0.55rem 0 0.3rem; }
+
+.event { border: 1px solid var(--line); border-left: 2px solid var(--quiet); border-radius: var(--r); padding: 0.6rem 0.7rem; margin-bottom: 0.45rem; background: var(--panel-2); }
+.event[data-tone="HIGH"] { border-left-color: var(--high); }
+.event[data-tone="MEDIUM"] { border-left-color: var(--medium); }
+.event[data-tone="LOW"] { border-left-color: var(--low); }
+.event[data-tone="UNABLE_TO_EVALUATE_RELIABLY"] { border-left-color: var(--unable); }
+.event-head { display: flex; gap: 0.45rem; align-items: baseline; flex-wrap: wrap; margin-bottom: 0.3rem; }
+.event-toggle { all: unset; display: block; width: 100%; cursor: pointer; }
+.event-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.event-summary { display: block; font-size: 0.88rem; line-height: 1.45; }
+.event-expand { display: block; margin-top: 0.35rem; font-family: var(--mono); font-size: 0.68rem; color: var(--accent); }
+.event-kind { font-family: var(--mono); font-size: 0.68rem; color: var(--faint); }
+.event p { margin: 0 0 0.35rem; font-size: 0.88rem; }
+.event ul { margin: 0.15rem 0 0.35rem; padding-left: 1rem; font-size: 0.82rem; color: var(--muted); }
+.event li.against { color: var(--faint); }
+.why-title { font-family: var(--mono); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--faint); margin: 0.35rem 0 0.1rem; }
+.event-facts { font-size: 0.78rem; color: var(--faint); margin: 0.3rem 0 0; font-family: var(--mono); }
+/* A real gap, and true of every event assessed in that window — so it is marked rather
+   than shouted, or it drowns out the developments themselves. */
+.event-facts.gap { color: var(--faint); border-left: 2px solid var(--unable); padding-left: 0.4rem; }
+.sources { list-style: none; padding: 0; margin: 0.3rem 0 0; font-size: 0.78rem; }
+.sources li { margin-bottom: 0.15rem; color: var(--faint); }
+.sources a { color: var(--accent); }
+
+/* --- states ---------------------------------------------------------------- */
+
+.notice { border: 1px solid var(--line); border-left: 2px solid var(--accent); background: var(--panel); border-radius: var(--r); padding: 0.55rem 0.7rem; font-size: 0.84rem; margin-bottom: 0.8rem; }
+.notice.error { border-left-color: var(--high); }
+.notice.ok { border-left-color: var(--low); }
+
+.blank { text-align: center; padding: 2.5rem 1rem; color: var(--muted); border: 1px dashed var(--line-bright); border-radius: var(--r); }
+.blank h3 { margin: 0 0 0.3rem; font-family: var(--mono); font-size: 0.9rem; color: var(--text); letter-spacing: 0.04em; text-transform: uppercase; }
+.blank p { margin: 0 auto; max-width: 28rem; font-size: 0.86rem; }
+
+.skeleton { height: 7rem; border-radius: var(--r); background: linear-gradient(90deg,#0e1214 25%,#161c1e 50%,#0e1214 75%); background-size: 200% 100%; animation: sh 1.3s infinite; }
+@keyframes sh { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+.attn-rows { display: grid; gap: 0.5rem; }
+.attn-row[data-tone="HIGH"] { border-left-color: var(--high); }
+.attn-row[data-tone="MEDIUM"] { border-left-color: var(--medium); }
+.attn-row[data-tone="LOW"] { border-left-color: var(--low); }
+/* Hovering a row is a pointer affordance, not a change of meaning: the border responds
+   and the text does not, so an entire development does not turn accent-coloured. */
+
+.attn-body { flex: 1; min-width: 0; }
+.attn-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; }
+.attn-meta { font-family: var(--mono); font-size: 0.68rem; color: var(--faint); margin-top: 0.25rem; }
+
+/* --- narrowing controls ------------------------------------------------------
+ *
+ * Filters narrow; they never reorder and never rescore. The focus chips are the reader's
+ * own tags, and only the ones they actually chose for a company appear — offering a
+ * filter that could never match would read as the system missing things.
+ */
+
+.filters {
+  display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; align-items: flex-start;
+  padding: 0.6rem 0.7rem; margin-bottom: 0.9rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
+}
+.filter { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.filter > label, .filter > span {
+  font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+}
+select {
+  font: inherit; font-size: 0.82rem; min-height: 2.25rem; padding: 0.3rem 0.5rem;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line-bright); border-radius: var(--r);
+}
+.chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.chip {
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.03em;
+  padding: 0.3rem 0.55rem; min-height: 2rem;
+  background: transparent; color: var(--muted); border: 1px solid var(--line-bright);
+}
+.chip[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: #04140a; font-weight: 700;
+}
+.chip.clear { color: var(--faint); border-style: dashed; }
+
+/* --- the lead ---------------------------------------------------------------- */
+
+.lead {
+  display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap;
+  margin: 0 0 0.9rem;
+}
+.lead h1 {
+  margin: 0; font-family: var(--mono); font-size: 0.9rem;
+  letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
+}
+.lead p { margin: 0.15rem 0 0; color: var(--faint); font-size: 0.82rem; }
+.lead .primary { margin-left: auto; min-height: 2.5rem; }
+.footnote { color: var(--faint); font-size: 0.78rem; margin: 0.6rem 0 0; }
+
+/* --- attention rows ---------------------------------------------------------- */
+
+.attn-rows { list-style: none; padding: 0; margin: 0; }
+.attn-rows li { margin-bottom: 0.5rem; }
+.attn-row { min-height: 3rem; align-items: stretch; }
+.attn-row[data-tone="HIGH"] { border-left-color: var(--high); }
+.attn-row[data-tone="MEDIUM"] { border-left-color: var(--medium); }
+.attn-row[data-tone="LOW"] { border-left-color: var(--low); }
+
+.matched {
+  margin: 0.3rem 0 0; font-size: 0.76rem; color: var(--accent);
+}
+.matched.outside { color: var(--medium); }
+.matched.disputed { color: var(--high); }
+
+@media (max-width: 34rem) {
+  .attn-row { flex-direction: column; gap: 0.4rem; }
+  .attn-side { flex-direction: row; align-items: center; }
+}
+
+/* --- the rest of the watchlist ----------------------------------------------
+ *
+ * What keeps an empty attention list from being an empty screen. "Quiet" and "could not
+ * evaluate" are separate groups on purpose: one is a conclusion, the other an admission.
+ */
+
+.rest { margin-top: 1.4rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.1rem; }
+.rest-group[data-tone="warn"] .group-head h2 { color: var(--unable); }
+.rest-group .group-head { display: flex; align-items: baseline; gap: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--line); }
+.rest-group h2 {
+  margin: 0; font-family: var(--mono); font-size: 0.74rem;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent);
+}
+.rest-group .n { font-family: var(--mono); font-size: 0.7rem; color: var(--faint); margin-left: auto; }
+.group-note { margin: 0.35rem 0 0.5rem; font-size: 0.78rem; color: var(--faint); }
+.rest-rows { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.3rem; }
+.rest-row {
+  display: flex; gap: 0.7rem; align-items: baseline; width: 100%; min-height: 2.5rem;
+  text-align: left; background: var(--panel); border: 1px solid var(--line);
+  padding: 0.45rem 0.6rem; font: inherit; color: inherit;
+}
+.rest-row:hover { border-color: var(--line-bright); color: inherit; }
+.rest-text { flex: 1; min-width: 0; font-size: 0.82rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rest-when { font-family: var(--mono); font-size: 0.7rem; color: var(--faint); }
+
+@media (max-width: 34rem) {
+  .rest-row { flex-wrap: wrap; }
+  .rest-text { white-space: normal; }
+}
+
+/* --- adding a company, and saying why ---------------------------------------- */
+
+.suggestions .tier { margin-left: auto; font-size: 0.7rem; color: var(--faint); font-family: var(--mono); }
+.no-match { margin: 0; padding: 0.6rem 0.7rem; font-size: 0.8rem; color: var(--muted); }
+
+.interests {
+  background: var(--panel); border: 1px solid var(--line-bright); border-radius: var(--r);
+  padding: 0.85rem; margin-bottom: 0.9rem; display: grid; gap: 0.7rem;
+}
+.interests-head h2 { margin: 0; font-family: var(--mono); font-size: 0.95rem; }
+.interests-head h2 span { color: var(--faint); font-family: system-ui, sans-serif; font-size: 0.8rem; font-weight: 400; }
+.interests-head p { margin: 0.25rem 0 0; font-size: 0.8rem; color: var(--muted); }
+.interests label { display: grid; gap: 0.3rem; font-size: 0.8rem; color: var(--muted); }
+textarea {
+  font: inherit; font-size: 0.85rem; padding: 0.5rem 0.6rem; resize: vertical;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line-bright); border-radius: var(--r);
+}
+.tagset { border: 1px dashed var(--line-bright); border-radius: var(--r); padding: 0.5rem 0.6rem; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.tagset legend { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 0 0.3rem; }
+.interests-foot { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.interests-foot button { min-height: 2.5rem; }
+
+/* --- detail ------------------------------------------------------------------ */
+
+.detail-title { flex: 1; min-width: 0; }
+.detail-head button { min-height: 2.5rem; }
+.yours { border-left: 2px solid var(--accent); padding: 0.4rem 0 0.4rem 0.6rem; margin-bottom: 1rem; }
+.yours h3 { margin: 0 0 0.25rem; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.yours p { margin: 0.15rem 0; font-size: 0.84rem; color: var(--muted); }
+
+/* A dispute changes how sure we are, not how much something matters — so it is marked
+   on the record rather than restyling the whole card by severity. */
+.dispute {
+  margin: 0.4rem 0; padding: 0.4rem 0.5rem; font-size: 0.8rem;
+  border-radius: var(--r); background: var(--panel);
+  border: 1px solid var(--line-bright); border-left: 2px solid var(--medium);
+}
+.dispute.confirmed { border-left-color: var(--high); }
+.dispute b { color: var(--text); }
+.dispute-of { display: block; margin-top: 0.2rem; color: var(--faint); }
+.event[data-state="WITHDRAWN"] p:first-of-type { text-decoration: line-through; text-decoration-color: var(--faint); }
+
+/* --- price context ----------------------------------------------------------- */
+
+.chart { border: 1px solid var(--line); border-radius: var(--r); padding: 0.7rem; margin-bottom: 1.1rem; background: var(--panel-2); }
+.chart-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.chart-head h3 { margin: 0; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.ranges { display: flex; gap: 0.25rem; margin-left: auto; }
+.ranges button { font-family: var(--mono); font-size: 0.7rem; padding: 0.25rem 0.5rem; min-height: 2rem; background: transparent; color: var(--muted); }
+.ranges button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #04140a; font-weight: 700; }
+
+.chart-plot { width: 100%; height: 10rem; }
+.chart-plot svg { width: 100%; height: 100%; overflow: visible; }
+.chart-plot path { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.chart-plot .baseline { stroke: var(--line-bright); stroke-dasharray: 3 4; }
+.chart-plot .series-security { stroke: var(--accent); stroke-width: 2; }
+.chart-plot .series-sector { stroke: var(--medium); }
+.chart-plot .series-broad { stroke: var(--muted); }
+.chart-skeleton { height: 10rem; border-radius: var(--r); background: var(--panel); }
+
+.legend { list-style: none; display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; padding: 0; margin: 0.5rem 0 0; font-size: 0.76rem; color: var(--muted); }
+.legend li { display: flex; align-items: center; gap: 0.35rem; }
+.legend b { font-family: var(--mono); color: var(--text); }
+.legend .swatch { width: 0.75rem; height: 2px; background: var(--muted); }
+.legend .series-security .swatch { background: var(--accent); }
+.legend .series-sector .swatch { background: var(--medium); }
+.legend .series-broad .swatch { background: var(--muted); }
+
+.chart-basis, .chart-note { margin: 0.45rem 0 0; font-size: 0.74rem; color: var(--faint); }
+.chart-note { border-left: 2px solid var(--line-bright); padding-left: 0.4rem; }
+
+/* --- notices ----------------------------------------------------------------- */
+
+.notice.warn { border-left-color: var(--unable); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* --- source standing (D36) ----------------------------------------------------
+ *
+ * A third axis beside attention and confidence, and styled so it cannot be mistaken for
+ * either: outlined rather than filled, and always spelled out in words. "Unrecognised"
+ * is a statement about our list, not an accusation, so it is marked and not alarmed —
+ * amber, never the red reserved for HIGH attention.
+ */
+
+.badge.standing {
+  background: transparent;
+  border-color: var(--line-bright);
+  color: var(--faint);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+.badge.standing[data-standing="OFFICIAL"] {
+  color: var(--low);
+  border-color: var(--low);
+}
+.badge.standing[data-standing="ESTABLISHED"] {
+  color: var(--muted);
+  border-color: var(--line-bright);
+}
+.badge.standing[data-standing="SYNDICATED_RELEASE"] {
+  color: var(--unable);
+  border-color: var(--unable);
+}
+.badge.standing[data-standing="UNRECOGNISED"] {
+  color: var(--medium);
+  border-color: var(--medium);
+}
+
+.src-standing {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--faint);
+}
+
+/* --- an interactive card ------------------------------------------------------
+ *
+ * The board is where a reader decides what to open, so the card answers "is this worth
+ * opening?" in place. Expanding reveals stored reason codes and publishers; nothing here
+ * computes a verdict, and nothing loads on expand — it is already in hand.
+ */
+
+.tile-more {
+  align-self: flex-start;
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: transparent;
+  border-color: transparent;
+  color: var(--faint);
+}
+.tile-more:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--line-bright);
+}
+.tile-more[aria-expanded="true"] {
+  color: var(--accent);
+}
+
+.tile-detail {
+  border-top: 1px dashed var(--line);
+  padding-top: 0.45rem;
+  font-size: 0.8rem;
+}
+.tile-full {
+  margin: 0 0 0.35rem;
+  color: var(--text);
+}
+.tile-detail ul {
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--muted);
+}
+.tile-detail li.against {
+  color: var(--faint);
+}
+.tile-sources {
+  margin: 0.35rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--faint);
+}
+
+/* --- a readable trace ---------------------------------------------------------
+ *
+ * Pointing at the sparkline names a stored session. The readout is an <output> so the
+ * value is announced as it changes, and arrow keys move the same selection — the chart
+ * must not be the only way to reach the number.
+ */
+
+.spark-wrap {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.sparkline {
+  width: 4.5rem;
+  height: 1.6rem;
+  overflow: visible;
+  touch-action: none;
+  cursor: crosshair;
+}
+.sparkline:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.spark-dot {
+  fill: var(--accent);
+  stroke: var(--panel);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.spark-read {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* Narrow: the price row stops competing with the trace, and every target grows. */
+@media (max-width: 30rem) {
+  .price-status .price {
+    font-size: 1.15rem;
+  }
+  .spark-wrap {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+  .sparkline {
+    width: 6rem;
+    height: 2rem;
+  }
+  /* Every control grows, not just the ones on a card. A 26px target is a miss on a
+     phone wherever it happens to live. */
+  .tile-more,
+  button.ghost,
+  .how-toggle {
+    min-height: 2.5rem;
+    padding-inline: 0.5rem;
+  }
+  .tile {
+    padding: 0.85rem;
+  }
+}
+
+/* --- watch points (D37) -------------------------------------------------------
+ *
+ * A level the reader set, and the notice when a stored close crosses it. Styled as a
+ * bookmark rather than an alarm: this is the reader's own bracket, not a verdict the
+ * engine reached, and it must not compete visually with HIGH attention.
+ */
+
+.watch {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--panel-2);
+  padding: 0.7rem;
+  margin-bottom: 1.1rem;
+}
+.watch-head h3 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.watch-head p {
+  margin: 0.2rem 0 0.55rem;
+  font-size: 0.76rem;
+  color: var(--faint);
+}
+
+.watch-form {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.watch-form input {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line-bright);
+  border-radius: var(--r);
+}
+.watch-level {
+  width: 7rem;
+  font-family: var(--mono);
+}
+.watch-note {
+  flex: 1;
+  min-width: 10rem;
+}
+.watch-form button {
+  min-height: 2.25rem;
+}
+.watch-hint {
+  margin: 0.45rem 0 0;
+  font-size: 0.72rem;
+  color: var(--faint);
+}
+
+.watch-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.6rem 0 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.watch-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  border-left: 2px solid var(--line-bright);
+  padding: 0.3rem 0 0.3rem 0.5rem;
+  font-size: 0.8rem;
+}
+.watch-list li[data-reached="true"] {
+  border-left-color: var(--accent);
+}
+.watch-level-read {
+  font-family: var(--mono);
+  color: var(--text);
+}
+.watch-note-read {
+  color: var(--muted);
+  flex: 1;
+  min-width: 8rem;
+}
+.watch-waiting {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--faint);
+}
+.watch-reached {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--accent);
+}
+
+@media (max-width: 34rem) {
+  .watch-level,
+  .watch-note {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+}
+
+/* --- timeline and alert history -----------------------------------------------
+ *
+ * Both are readings of records already on the page: the timeline re-orders the company's
+ * assessments by time, the alert list is the watch-point rows themselves. Neither styles
+ * itself like a verdict, because neither is one.
+ */
+
+.timeline,
+.alerts {
+  margin-bottom: 1.1rem;
+}
+.timeline-rows,
+.alert-rows {
+  list-style: none;
+  padding: 0;
+  margin: 0.4rem 0 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.timeline-rows li,
+.alert-rows li {
+  display: grid;
+  gap: 0.15rem 0.6rem;
+  align-items: baseline;
+  border-left: 2px solid var(--line-bright);
+  padding: 0.35rem 0 0.35rem 0.6rem;
+  font-size: 0.82rem;
+  grid-template-columns: 5.5rem 1fr auto;
+}
+.timeline-rows li[data-kind="disclosure"] { border-left-color: var(--accent); }
+.timeline-rows li[data-kind="market"] { border-left-color: var(--medium); }
+.alert-rows li[data-state="reached"] { border-left-color: var(--accent); }
+
+.tl-when,
+.alert-when {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--faint);
+}
+.tl-kind {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  grid-column: 2;
+}
+.tl-what {
+  grid-column: 1 / -1;
+  color: var(--text);
+}
+.timeline-rows .badge { grid-column: 3; grid-row: 1; }
+.tl-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.72rem;
+  color: var(--faint);
+}
+
+.alert-cond { font-family: var(--mono); color: var(--text); }
+.alert-note { color: var(--muted); grid-column: 2; }
+.alert-state {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+  grid-column: 3;
+  grid-row: 1;
+}
+.alert-when { grid-column: 1 / -1; }
+
+@media (max-width: 34rem) {
+  .timeline-rows li,
+  .alert-rows li {
+    grid-template-columns: 1fr auto;
+  }
+  .tl-kind,
+  .alert-note { grid-column: 1; }
+}
+
+/* --- the assistant (D40) ------------------------------------------------------
+ *
+ * A drawer, not a takeover. It sits in a corner, never covers the board on a wide screen,
+ * and becomes a sheet on a phone where a floating panel would hide the thing being asked
+ * about. The parts that make an answer checkable — window, coverage gap, citations,
+ * evidence — carry the same weight as the sentences.
+ */
+
+.assistant-open {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  min-height: 2.75rem;
+  padding: 0.5rem 1.1rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04140a;
+  font-weight: 700;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+}
+.assistant-open[aria-expanded="true"] {
+  background: var(--panel);
+  border-color: var(--line-bright);
+  color: var(--muted);
+}
+
+.assistant {
+  position: fixed;
+  right: 1rem;
+  bottom: 4.5rem;
+  z-index: 60;
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: min(34rem, calc(100vh - 7rem));
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line-bright);
+  border-radius: var(--r);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 55%);
+}
+
+.assistant-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.7rem 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+.assistant-head h2 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.assistant-head p {
+  margin: 0.2rem 0 0;
+  font-size: 0.74rem;
+  color: var(--faint);
+}
+.assistant-head .ghost {
+  margin-left: auto;
+}
+
+.assistant-log {
+  overflow-y: auto;
+  padding: 0.6rem 0.75rem;
+  flex: 1;
+}
+.assistant-empty,
+.assistant-busy {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--faint);
+}
+
+.turn + .turn {
+  margin-top: 0.9rem;
+  border-top: 1px dashed var(--line);
+  padding-top: 0.7rem;
+}
+.asked {
+  margin: 0 0 0.4rem;
+  font-size: 0.82rem;
+  color: var(--text);
+  border-left: 2px solid var(--accent);
+  padding-left: 0.5rem;
+}
+
+/* A declined answer is a real answer and reads like one, never like an error. */
+.answer[data-answered="false"] .answer-statements {
+  color: var(--muted);
+}
+.answer-window {
+  margin: 0 0 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--faint);
+}
+.answer-gap {
+  margin: 0 0 0.45rem;
+  padding-left: 0.45rem;
+  border-left: 2px solid var(--unable);
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+.answer-statements {
+  margin: 0;
+  padding-left: 1rem;
+  font-size: 0.84rem;
+}
+.answer-statements li {
+  margin-bottom: 0.3rem;
+}
+.answer-cite {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--faint);
+}
+.answer-evidence {
+  margin-top: 0.45rem;
+  font-size: 0.78rem;
+}
+.answer-evidence summary {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.assistant-openers {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0 0.75rem 0.5rem;
+  margin: 0;
+}
+.answer .assistant-openers {
+  padding: 0.5rem 0 0;
+}
+
+.assistant-form {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem 0.7rem;
+  border-top: 1px solid var(--line);
+}
+.assistant-form input {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line-bright);
+  border-radius: var(--r);
+}
+.assistant-form button {
+  min-height: 2.25rem;
+}
+
+/* On a phone a floating panel would cover the thing being asked about, so it becomes a
+   sheet anchored to the bottom instead. */
+@media (max-width: 34rem) {
+  .assistant {
+    right: 0;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 80vh;
+    border-radius: 10px 10px 0 0;
+    border-left: 0;
+    border-right: 0;
+  }
+  .assistant-open {
+    right: 0.75rem;
+    bottom: 0.75rem;
+  }
+}
+
+/* The panel must not cover the thing it is answering about.
+ *
+ * On a wide screen the content reflows out from under the drawer while it is open — the
+ * board loses a column rather than losing a card behind the panel. On a phone it is a
+ * bottom sheet, where covering is the expected behaviour of a sheet the reader opened. */
+@media (min-width: 60rem) {
+  .main:has(~ .assistant),
+  .main:has(.assistant) {
+    padding-right: 26rem;
+  }
+}
+
+/* --- assistant polish ---------------------------------------------------------- */
+
+/* Who said what. Labels rather than colour alone, so the distinction survives a
+   greyscale screen and a screen reader reads it in order. */
+.speaker {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 0.15rem;
+}
+.speaker.answered {
+  color: var(--accent);
+  margin: 0 0 0.25rem;
+}
+.asked {
+  background: var(--panel-2);
+  border-radius: var(--r);
+  padding: 0.4rem 0.55rem;
+}
+
+.turn .notice.error {
+  margin-bottom: 0;
+}
+.turn .notice.error p {
+  margin: 0 0 0.45rem;
+}
+.retry {
+  min-height: 2rem;
+  font-size: 0.76rem;
+}
+
+/* On a phone the sheet covers the floating button, so the floating button stops being a
+   control and the header close becomes the only one. */
+.assistant-close {
+  display: none;
+}
+@media (max-width: 34rem) {
+  .assistant-open[aria-expanded="true"] {
+    display: none;
+  }
+  .assistant-close {
+    display: inline-block;
+  }
+  .assistant-head .ghost + .ghost {
+    margin-left: 0;
+  }
+}
+
+/* --- the hero: while you were away ---------------------------------------------
+ *
+ * The product's argument, above everything else. Attention is the subject; price is
+ * supporting evidence and lives further down the page, not here.
+ */
+
+.away {
+  border: 1px solid var(--line-bright);
+  border-top: 2px solid var(--accent);
+  border-radius: var(--r);
+  background: var(--panel);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+}
+.away-head {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.away-head h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.away-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+  padding: 0.85rem 0 0;
+  border-top: 1px solid var(--line);
+}
+.away-counts dt {
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.away-counts dd {
+  margin: 0.2rem 0 0;
+  font-family: var(--mono);
+  font-size: 1.75rem;
+  line-height: 1.1;
+  font-weight: 700;
+  color: var(--muted);
+}
+.away-counts [data-tone="attention"] dd { color: var(--text); }
+.away-counts [data-tone="degraded"] dd { color: var(--unable); }
+.away-counts [data-tone="degraded"] dt { color: var(--unable); }
+
+.away-degraded {
+  margin: 0.8rem 0 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--unable);
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.how {
+  margin-top: 0.9rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+}
+.how-toggle {
+  min-height: 2rem;
+  padding: 0.3rem 0;
+  background: none;
+  border-color: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.how-toggle:hover:not(:disabled) { color: var(--accent); border-color: transparent; }
+.how-steps {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  max-width: 46rem;
+}
+.how-steps b {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: block;
+}
+
+/* --- an attention item ----------------------------------------------------------
+ *
+ * Attention dominates. Confidence and source standing are one small supporting line —
+ * three equal badges made three distinct axes read as decoration.
+ */
+
+.attn-row {
+  display: flex;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--quiet);
+  border-radius: var(--r);
+  padding: 0.7rem 0.85rem;
+}
+.attn-row[data-tone="HIGH"] { border-left-color: var(--high); }
+.attn-row[data-tone="MEDIUM"] { border-left-color: var(--medium); }
+.attn-row[data-tone="LOW"] { border-left-color: var(--low); }
+.attn-row:hover { border-color: var(--line-bright); }
+.attn-main { flex: 1; min-width: 0; }
+
+.attn-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.attn-level {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+.attn-level[data-tone="HIGH"] { background: var(--high-dim); color: var(--high); border-color: var(--high); }
+.attn-level[data-tone="MEDIUM"] { background: var(--medium-dim); color: var(--medium); border-color: var(--medium); }
+.attn-level[data-tone="LOW"] { background: var(--low-dim); color: var(--low); border-color: var(--low); }
+
+.attn-open {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  min-height: 2rem;
+}
+.attn-open:hover .tile-sym { color: var(--accent); }
+.attn-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.attn-row .tile-co { margin-left: 0; }
+
+.attn-axes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+  margin: 0.35rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--faint);
+}
+.attn-axes b { color: var(--muted); font-weight: 600; }
+
+.why-toggle {
+  margin-top: 0.5rem;
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border-color: var(--line-bright);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+}
+.why-toggle[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+
+.why-panel {
+  margin-top: 0.55rem;
+  border-top: 1px dashed var(--line);
+  padding-top: 0.55rem;
+}
+.why-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
+.why-list li {
+  display: grid;
+  grid-template-columns: 2.4rem 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.why-weight {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: right;
+}
+.why-list li[data-direction="+"] .why-weight { color: var(--low); }
+.why-list li[data-direction="-"] .why-weight { color: var(--faint); }
+.why-verdict {
+  margin: 0.55rem 0 0;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--faint);
+}
+.why-verdict b { color: var(--text); }
+.why-sources { list-style: none; margin: 0.4rem 0 0; padding: 0; font-size: 0.76rem; color: var(--faint); }
+.why-sources li { margin-bottom: 0.15rem; }
+.why-sources a { color: var(--accent); }
+
+/* Narrow-screen targets for the hero and attention item.
+ *
+ * Appended after the rules they override: at equal specificity the later declaration
+ * wins, and an earlier media block loses to a later base rule however narrow the screen.
+ */
+@media (max-width: 30rem) {
+  .attn-open {
+    min-height: 2.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .why-toggle {
+    min-height: 2.5rem;
+  }
+  .away {
+    padding: 0.85rem;
+  }
+  .away-head h2 {
+    font-size: 1.1rem;
+  }
+  .away-counts dd {
+    font-size: 1.5rem;
+  }
+}
+
+/* --- judge mode banner (D42) ----------------------------------------------------
+ *
+ * Persistent, above everything, and worded so no figure below it can be mistaken for a
+ * live market fact. Amber rather than red: this is a statement about the data's origin,
+ * not a failure.
+ */
+
+.judge-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 1rem;
+  background: var(--unable-dim);
+  border-bottom: 1px solid var(--unable);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.judge-bar b {
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--unable);
+}
+.judge-bar .ghost {
+  margin-left: auto;
+  min-height: 2.25rem;
+  border-color: var(--unable);
+  color: var(--unable);
+}
+.judge-bar .ghost:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--unable);
+}
+
+/* --- related records inside one development (D43) --------------------------------
+ *
+ * Two peer controls, not nested accordions: reasoning and updates sit side by side, each
+ * one level deep. The related list is an ordered list because it is development history.
+ */
+
+.attn-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.attn-actions .why-toggle {
+  margin-top: 0;
+}
+
+.attn-updates {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0.5rem 0 0;
+  border-top: 1px dashed var(--line);
+  display: grid;
+  gap: 0.35rem;
+}
+.attn-updates li {
+  display: grid;
+  grid-template-columns: 5rem auto 1fr;
+  gap: 0.15rem 0.6rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.upd-when {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--faint);
+}
+.upd-what {
+  grid-column: 1 / -1;
+  color: var(--text);
+}
+.attn-updates .src-standing {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 34rem) {
+  .attn-updates li {
+    grid-template-columns: 1fr auto;
+  }
+}
+
+/* --- the answer, in the hero ----------------------------------------------------
+ *
+ * A count is not an answer. These previews carry the four things a reader needs in two
+ * seconds — which company, what happened, how important, and one line of why — and link
+ * to the full record rather than repeating it.
+ */
+
+.away-answer {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+.away-answer h3 {
+  margin: 0 0 0.7rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.away-calm {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.previews {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.previews-more {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--faint);
+}
+
+.preview {
+  border-left: 3px solid var(--quiet);
+  background: var(--panel-2);
+  border-radius: 0 var(--r) var(--r) 0;
+  padding: 0.6rem 0.75rem;
+}
+.preview[data-tone="HIGH"] { border-left-color: var(--high); }
+.preview[data-tone="MEDIUM"] { border-left-color: var(--medium); }
+.preview[data-tone="LOW"] { border-left-color: var(--low); }
+
+.preview-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.3rem;
+}
+.preview-sym {
+  font-family: var(--mono);
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+}
+.preview-co {
+  color: var(--faint);
+  font-size: 0.78rem;
+}
+.preview-when {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--faint);
+}
+.preview-what {
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+/* The two supporting axes, in words and clearly subordinate to the level above them. */
+.preview-why {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.preview-link {
+  display: inline-block;
+  margin-top: 0.45rem;
+  min-height: 2rem;
+  padding: 0.35rem 0;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.82rem;
+}
+.preview-link:hover { text-decoration: underline; }
+
+/* A level the reader asked about. Distinct from developments, and it says so. */
+.away-asked {
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+.away-asked h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.away-asked ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+.away-asked li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  border-left: 3px solid var(--accent);
+  padding: 0.3rem 0 0.3rem 0.65rem;
+}
+.asked-open {
+  all: unset;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+  min-height: 2rem;
+  align-content: center;
+}
+.asked-open:hover .asked-what { color: var(--accent); }
+.away-asked .ghost { flex: 0 0 auto; }
+.asked-what { font-size: 0.9rem; color: var(--text); }
+.asked-what b { font-family: var(--mono); }
+.asked-note { font-size: 0.8rem; color: var(--muted); font-style: italic; }
+
+/* Operational counts: one quiet line, supporting the answer rather than being it. */
+.away-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.5rem;
+  margin: 0.9rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.away-status b {
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  color: var(--text);
+}
+.away-status [data-tone="degraded"] b { color: var(--unable); }
+
+.away-degraded b { color: var(--unable); font-weight: 600; }
+
+@media (max-width: 34rem) {
+  .away-head h2 { font-size: 1.2rem; }
+  .preview-when { margin-left: 0; width: 100%; }
+  .preview-link { min-height: 2.5rem; }
+}

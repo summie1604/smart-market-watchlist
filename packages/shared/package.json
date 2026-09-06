@@ -1,0 +1,17 @@
+{
+  "name": "@smart-market-watchlist/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.1",
+    "typescript": "^5.6.0"
+  }
+}

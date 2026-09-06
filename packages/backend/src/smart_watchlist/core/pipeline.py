@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from .context import BROAD_INDEX, context_for, curated_symbols
+from .contradiction import DisputeProposal, judge_dispute, propose_dispute
 from .corroboration import assess_corroboration
 from .engine import assess
 from .extraction import ExtractedEvent, Extraction, validate
@@ -125,6 +126,7 @@ def run_market_pipeline(
     symbols = curated_symbols()
     indices = tuple({c for c in (context_for(s, s).sector_index for s in symbols) if c})
     bars, market_coverage = source.fetch([*symbols, *indices, BROAD_INDEX])
+    store.save_price_bars(bars)
 
     news_gap = CoverageRecord(
         source="news",
@@ -323,12 +325,15 @@ def _assess_article(
         store.record_rejection(evidence, refusal or "validation-refused", used, now)
         return None  # not about this company, or too thin to be anything
 
-    decision = decide_link(
-        extraction.event,
-        _link_candidates(store, evidence, extraction.event, now),
-    )
+    candidates = _link_candidates(store, evidence, extraction.event, now)
+    decision = decide_link(extraction.event, candidates)
 
-    if decision.outcome is LinkOutcome.LINK and decision.event_id is not None:
+    # A denial reads like the story it denies — same company, same type, much of the same
+    # wording — so linking would merge it into that story and the disagreement would
+    # vanish inside the record of the claim. A grounded denial holds the merge (D29).
+    dispute = propose_dispute((evidence,))
+
+    if dispute is None and decision.outcome is LinkOutcome.LINK and decision.event_id is not None:
         event = _merge_into(store, decision.event_id, evidence, extraction.event)
     else:
         event = Event(
@@ -352,7 +357,36 @@ def _assess_article(
     store.save(
         assessment, extraction=_extraction_row(extraction), link_state=decision.outcome.value
     )
+    _record_disputes(store, event, candidates, dispute)
     return assessment
+
+
+def _record_disputes(
+    store: AssessmentStore,
+    later: Event,
+    candidates: list[tuple[Event, ExtractedEvent | None]],
+    proposal: DisputeProposal | None,
+) -> None:
+    """Judge this article against the events it might contradict (D29).
+
+    Runs over the same bucket linking already generated — same company, same event type,
+    inside the window — because a contradiction and a continuation are two readings of
+    the same relationship, and looking wider would mean disputing across companies.
+
+    Nothing here deletes, edits or rescores an earlier event. The gates decide, and their
+    output is a state and a link that leave both records readable.
+    """
+    if proposal is None:
+        return
+    for earlier, _ in candidates:
+        judged = judge_dispute(earlier, later, proposal)
+        if judged is None:
+            continue
+        # An unconfirmed proposal is recorded only where nothing is recorded yet: it must
+        # never overwrite a confirmed dispute with "possibly related".
+        if not judged.confirmed and earlier.disputed_by is not None:
+            continue
+        store.set_contradiction(earlier.event_id, judged.state, judged.disputed_by, judged.detail)
 
 
 def _link_candidates(

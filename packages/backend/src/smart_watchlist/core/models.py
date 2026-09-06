@@ -26,6 +26,7 @@ __all__ = [
     "Assessment",
     "Attention",
     "Confidence",
+    "ContradictionState",
     "Coverage",
     "CoverageRecord",
     "CoverageStatus",
@@ -73,6 +74,20 @@ class Confidence(Enum):
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
     LOW = "LOW"
+
+
+class ContradictionState(Enum):
+    """Where an event stands after everything published since (D29).
+
+    Lives here rather than beside the gates that set it, because it is part of an event's
+    shape: every reader of an :class:`Event` must be able to see that what it says has
+    been contested, without depending on the module that decided so.
+    """
+
+    STANDING = "STANDING"
+    DISPUTED = "DISPUTED"
+    WITHDRAWN = "WITHDRAWN"
+    """The narrower signal: the source itself corrected or retracted the report."""
 
 
 class RunStatus(Enum):
@@ -209,6 +224,13 @@ class Event:
     description: str
     occurred_at: datetime
     evidence: tuple[Evidence, ...]
+    contradiction: ContradictionState = ContradictionState.STANDING
+    """Set only by the deterministic gates in :mod:`.contradiction`, never by a model."""
+    disputed_by: str | None = None
+    """The later event contradicting this one, or proposed to. Present while the state is
+    still ``STANDING`` when a gate refused the proposal: the reader sees a possible
+    relationship, and is not told it is a contradiction."""
+    dispute_detail: str = ""
 
 
 @dataclass(frozen=True)

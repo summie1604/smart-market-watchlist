@@ -13,13 +13,16 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from ..core.market import Bar
 from ..core.models import (
     Assessment,
     Attention,
     Confidence,
+    ContradictionState,
     Coverage,
     CoverageRecord,
     CoverageStatus,
@@ -32,6 +35,7 @@ from ..core.models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 __all__ = ["SqliteAssessmentStore"]
@@ -92,6 +96,29 @@ _MIGRATIONS: tuple[str, ...] = (
     );
     CREATE INDEX idx_rejected_symbol ON rejected_evidence (security_symbol, recorded_at DESC);
     """,
+    """
+    ALTER TABLE assessments ADD COLUMN contradiction TEXT NOT NULL DEFAULT 'STANDING';
+    ALTER TABLE assessments ADD COLUMN disputed_by TEXT;
+    ALTER TABLE assessments ADD COLUMN dispute_detail TEXT NOT NULL DEFAULT '';
+    """,
+    """
+    CREATE TABLE market_bars (
+        symbol         TEXT NOT NULL,
+        session_date   TEXT NOT NULL,
+        close           REAL NOT NULL,
+        adjusted_close  REAL NOT NULL,
+        volume          REAL NOT NULL,
+        split_ratio     REAL NOT NULL,
+        dividend        REAL NOT NULL,
+        PRIMARY KEY (symbol, session_date)
+    );
+    CREATE INDEX idx_market_bars_symbol_date
+        ON market_bars (symbol, session_date DESC);
+    """,
+    """
+    ALTER TABLE market_bars ADD COLUMN high REAL;
+    ALTER TABLE market_bars ADD COLUMN low REAL;
+    """,
 )
 
 
@@ -102,11 +129,16 @@ class SqliteAssessmentStore:
         self._path = str(path)
         self._migrate()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self._path)
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA foreign_keys=ON")
-        return connection
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _migrate(self) -> None:
         """Apply pending migrations. Versioned, never recreated by hand."""
@@ -134,8 +166,9 @@ class SqliteAssessmentStore:
                 INSERT INTO assessments (
                     event_id, security_symbol, company_name, event_type, description,
                     occurred_at, attention, confidence, score, scoring_version,
-                    assessed_at, reasons, coverage, evidence, extraction, link_state
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    assessed_at, reasons, coverage, evidence, extraction, link_state,
+                    contradiction, disputed_by, dispute_detail
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(event_id) DO UPDATE SET
                     attention=excluded.attention,
                     confidence=excluded.confidence,
@@ -146,7 +179,18 @@ class SqliteAssessmentStore:
                     coverage=excluded.coverage,
                     evidence=excluded.evidence,
                     extraction=excluded.extraction,
-                    link_state=excluded.link_state
+                    link_state=excluded.link_state,
+                    -- A dispute already recorded survives re-ingestion. Re-fetching the
+                    -- article a correction was about must not quietly un-say the
+                    -- correction, so the stored state is kept unless the incoming event
+                    -- carries a link of its own.
+                    contradiction=CASE
+                        WHEN excluded.disputed_by IS NULL THEN assessments.contradiction
+                        ELSE excluded.contradiction END,
+                    disputed_by=COALESCE(excluded.disputed_by, assessments.disputed_by),
+                    dispute_detail=CASE
+                        WHEN excluded.disputed_by IS NULL THEN assessments.dispute_detail
+                        ELSE excluded.dispute_detail END
                 """,
                 (
                     event.event_id,
@@ -165,6 +209,9 @@ class SqliteAssessmentStore:
                     json.dumps([_evidence_row(e) for e in event.evidence]),
                     None if extraction is None else json.dumps(extraction),
                     link_state,
+                    event.contradiction.value,
+                    event.disputed_by,
+                    event.dispute_detail,
                 ),
             )
 
@@ -195,6 +242,75 @@ class SqliteAssessmentStore:
                     run.detail,
                 ),
             )
+
+    def save_price_bars(self, bars: dict[str, list[Bar]]) -> None:
+        """Persist fetched daily bars idempotently before a page can ask for them."""
+        rows = [
+            (
+                symbol,
+                bar.on.isoformat(),
+                bar.close,
+                bar.adjusted_close,
+                bar.volume,
+                bar.split_ratio,
+                bar.dividend,
+                bar.high,
+                bar.low,
+            )
+            for symbol, series in bars.items()
+            for bar in series
+        ]
+        if not rows:
+            return
+        with self._connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO market_bars (
+                    symbol, session_date, close, adjusted_close, volume, split_ratio,
+                    dividend, high, low
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol, session_date) DO UPDATE SET
+                    close=excluded.close,
+                    adjusted_close=excluded.adjusted_close,
+                    volume=excluded.volume,
+                    split_ratio=excluded.split_ratio,
+                    dividend=excluded.dividend,
+                    -- Bars already stored before this column existed keep their NULL until
+                    -- a run re-reads that session. COALESCE would be wrong: it would keep a
+                    -- stale high after a provider correction.
+                    high=excluded.high,
+                    low=excluded.low
+                """,
+                rows,
+            )
+
+    def price_bars(self, symbols: list[str]) -> dict[str, list[Bar]]:
+        """Read stored bars for requested symbols; never calls an external provider."""
+        if not symbols:
+            return {}
+        placeholders = ",".join("?" for _symbol in symbols)
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                f"""SELECT * FROM market_bars
+                WHERE symbol IN ({placeholders}) ORDER BY session_date""",
+                symbols,
+            ).fetchall()
+        result: dict[str, list[Bar]] = {}
+        for row in rows:
+            result.setdefault(row["symbol"], []).append(
+                Bar(
+                    on=datetime.fromisoformat(row["session_date"]).date(),
+                    close=row["close"],
+                    adjusted_close=row["adjusted_close"],
+                    volume=row["volume"],
+                    split_ratio=row["split_ratio"],
+                    dividend=row["dividend"],
+                    high=row["high"],
+                    low=row["low"],
+                )
+            )
+        return result
 
     def latest_run(self, source: str) -> IngestRun | None:
         """Current source health is the most recent run, not the newest assessment."""
@@ -346,6 +462,26 @@ class SqliteAssessmentStore:
             ).fetchall()
         return [_to_run(row) for row in rows]
 
+    def set_contradiction(
+        self, event_id: str, state: ContradictionState, disputed_by: str, detail: str
+    ) -> bool:
+        """Record how an earlier event now stands, without touching the verdict.
+
+        Narrow on purpose: attention, confidence, score and reason codes are untouched by
+        a dispute. What changed is what we can say about the claim, not what the engine
+        concluded when it was made (D29).
+        """
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE assessments
+                SET contradiction = ?, disputed_by = ?, dispute_detail = ?
+                WHERE event_id = ?
+                """,
+                (state.value, disputed_by, detail, event_id),
+            )
+            return cursor.rowcount > 0
+
     def get(self, event_id: str) -> Assessment | None:
         """One event by id, by primary key.
 
@@ -358,6 +494,26 @@ class SqliteAssessmentStore:
                 "SELECT * FROM assessments WHERE event_id = ?", (event_id,)
             ).fetchone()
         return None if row is None else _to_assessment(row)
+
+    def for_symbol(self, symbol: str, limit: int = 50) -> list[Assessment]:
+        """One company's record, newest first, bounded.
+
+        A dedicated query rather than filtering ``recent()`` in Python: reading five
+        hundred rows to keep nine is the shape that stops working first, and the
+        ``(security_symbol, event_type, occurred_at)`` index already serves the symbol
+        prefix. The limit is not optional — an unbounded per-company query is an
+        unbounded response, and a company can accumulate evidence indefinitely.
+        """
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                """
+                SELECT * FROM assessments WHERE security_symbol = ?
+                ORDER BY occurred_at DESC LIMIT ?
+                """,
+                (symbol, limit),
+            ).fetchall()
+        return [_to_assessment(row) for row in rows]
 
     def recent(self, limit: int = 50) -> list[Assessment]:
         """Most recently disclosed first."""
@@ -458,6 +614,9 @@ def _to_assessment(row: sqlite3.Row) -> Assessment:
         description=row["description"],
         occurred_at=datetime.fromisoformat(row["occurred_at"]),
         evidence=evidence,
+        contradiction=ContradictionState(row["contradiction"]),
+        disputed_by=row["disputed_by"],
+        dispute_detail=row["dispute_detail"] or "",
     )
     return Assessment(
         event=event,

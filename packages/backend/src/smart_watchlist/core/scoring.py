@@ -15,7 +15,7 @@ from .models import Attention
 
 __all__ = ["SCORING_VERSION", "THRESHOLDS", "WEIGHTS", "attention_for", "weight_of"]
 
-SCORING_VERSION = "2026-09-05.a"
+SCORING_VERSION = "2026-09-06.a"
 
 WEIGHTS: dict[str, int] = {
     # Provenance
@@ -38,6 +38,11 @@ WEIGHTS: dict[str, int] = {
     "SINGLE_SOURCE_ONLY": -1,
     "SPECULATIVE_REPORT": -2,
     "NEWS_COINCIDES_WITH_MOVE": 2,
+    # The symmetric counterpart. Deliberately smaller than its positive twin: a market
+    # that has not reacted is weak evidence that nothing happened, because price is often
+    # the slowest signal (VISION §5) and a filing can matter before it is priced.
+    "NO_MARKET_REACTION": -1,
+    "UNRECOGNISED_PUBLISHER_ONLY": -1,
     "POSSIBLY_RELATED_EVENT": -1,
     "EXTRACTION_DEGRADED": -1,
     "UNSUPPORTED_FIELDS_DROPPED": -1,

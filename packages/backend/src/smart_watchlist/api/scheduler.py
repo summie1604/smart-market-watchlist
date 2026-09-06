@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ..core.ingestion import CycleResult, IngestionSources
-    from ..core.ports import AssessmentStore
+    from ..core.ports import AssessmentStore, WatchPointStore
 
 __all__ = ["IngestionScheduler", "SchedulerConfig"]
 
@@ -55,9 +55,11 @@ class IngestionScheduler:
         store: AssessmentStore,
         config: SchedulerConfig | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        watch_points: WatchPointStore | None = None,
     ) -> None:
         self._sources = sources
         self._store = store
+        self._watch_points = watch_points
         self._config = config or SchedulerConfig()
         self._now = now
         self._task: asyncio.Task[None] | None = None
@@ -156,7 +158,9 @@ class IngestionScheduler:
             return None
         self._running = True
         try:
-            result = await asyncio.to_thread(run_cycle, self._sources, self._store, self._now)
+            result = await asyncio.to_thread(
+                run_cycle, self._sources, self._store, self._now, self._watch_points
+            )
             self.last_result = result
             self.cycles_completed += 1
             return result

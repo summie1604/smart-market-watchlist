@@ -57,6 +57,11 @@ class Bar:
     close: float
     adjusted_close: float
     volume: float
+    high: float | None = None
+    """The session's high, as the provider reported it. ``None`` where the provider did
+    not give one — absence, never a value substituted from the close, because a fabricated
+    range is worse than a missing one."""
+    low: float | None = None
     split_ratio: float = 0.0
     """Non-zero when a split or bonus took effect this session. 2.0 is two-for-one."""
     dividend: float = 0.0

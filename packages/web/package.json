@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@smart-market-watchlist/shared": "workspace:*",
     "astro": "^5.0.0",
     "@astrojs/react": "^4.0.0",
     "react": "^19.0.0",

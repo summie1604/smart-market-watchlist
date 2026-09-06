@@ -12,13 +12,21 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from datetime import datetime
+    from datetime import date, datetime
 
     from .extraction import ExtractedEvent
     from .market import Bar
-    from .models import Assessment, CoverageRecord, Evidence, IngestRun
+    from .models import Assessment, ContradictionState, CoverageRecord, Evidence, IngestRun
+    from .watchpoints import WatchPoint
 
-__all__ = ["AssessmentStore", "DisclosureSource", "Extractor", "MarketSource", "NewsSource"]
+__all__ = [
+    "AssessmentStore",
+    "DisclosureSource",
+    "Extractor",
+    "MarketSource",
+    "NewsSource",
+    "WatchPointStore",
+]
 
 
 class DisclosureSource(Protocol):
@@ -89,6 +97,19 @@ class AssessmentStore(Protocol):
 
     def recent(self, limit: int = 50) -> list[Assessment]: ...
 
+    def for_symbol(self, symbol: str, limit: int = 50) -> list[Assessment]: ...
+
+    """One company's record, newest first and bounded — never a filtered full scan."""
+
+    def set_contradiction(
+        self, event_id: str, state: ContradictionState, disputed_by: str, detail: str
+    ) -> bool: ...
+
+    """Record how an earlier event stands once something later contradicted it (D29).
+
+    Narrow deliberately: it changes what we can say about a claim, never the verdict the
+    engine reached when the claim was made."""
+
     def candidates(
         self, symbol: str, event_type: str, since: datetime
     ) -> list[tuple[Assessment, dict[str, object] | None]]: ...
@@ -98,6 +119,12 @@ class AssessmentStore(Protocol):
     def save_run(self, run: IngestRun) -> None: ...
 
     """Record that a run happened and what it could see — even when it produced nothing."""
+
+    def save_price_bars(self, bars: dict[str, list[Bar]]) -> None: ...
+
+    def price_bars(self, symbols: list[str]) -> dict[str, list[Bar]]: ...
+
+    """Stored EOD context. API reads never trigger a provider call (D3, D28)."""
 
     def latest_run(self, source: str) -> IngestRun | None: ...
 
@@ -120,3 +147,21 @@ class AssessmentStore(Protocol):
     def delete_assessment(self, event_id: str) -> bool: ...
 
     """The most recent run for a source, which is what current source health means."""
+
+
+class WatchPointStore(Protocol):
+    """The private levels readers asked to be told about (D37).
+
+    A separate port from :class:`AssessmentStore` because the data is separate: watch
+    points belong to one person, assessments belong to everyone. An ingestion cycle needs
+    both and is the only thing that does.
+    """
+
+    def open_watch_points(self) -> list[WatchPoint]: ...
+
+    """Every untriggered point, across readers. Triggered ones are never re-examined."""
+
+    def mark_triggered(self, point_id: str, on: date, close: float) -> bool: ...
+
+    """Record the session that satisfied a point. False when it already had one, which is
+    what makes re-running a cycle announce nothing twice."""

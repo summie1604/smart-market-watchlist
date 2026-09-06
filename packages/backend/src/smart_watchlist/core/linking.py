@@ -33,7 +33,14 @@ if TYPE_CHECKING:
     from .extraction import ExtractedEvent
     from .models import Event
 
-__all__ = ["LINK_WINDOW", "LinkDecision", "LinkOutcome", "decide_link"]
+__all__ = [
+    "LINK_WINDOW",
+    "TITLE_SIMILARITY_LINK",
+    "LinkDecision",
+    "LinkOutcome",
+    "decide_link",
+    "title_similarity",
+]
 
 LINK_WINDOW = timedelta(days=4)
 """How far back a candidate may reach. A developing story spans days; beyond this the
@@ -67,7 +74,7 @@ _STOPWORDS = frozenset(
 )
 _WORD = re.compile(r"[a-z0-9]+")
 
-_TITLE_SIMILARITY_LINK = 0.5
+TITLE_SIMILARITY_LINK = 0.5
 """Above this, and with no attribute conflict, two reports describe one occurrence.
 
 Calibrated against real multi-publisher coverage rather than chosen: two outlets
@@ -120,7 +127,7 @@ def decide_link(
         conflict = _attribute_conflict(proposal, extracted)
         if conflict is not None:
             continue  # a contradicted attribute rules this candidate out entirely
-        similarity = _similarity(proposal.description, event.description)
+        similarity = title_similarity(proposal.description, event.description)
         if best is None or similarity > best[0]:
             best = (similarity, event, _attribute_support(proposal, extracted))
 
@@ -132,7 +139,7 @@ def decide_link(
         )
 
     similarity, event, support = best
-    if similarity >= _TITLE_SIMILARITY_LINK:
+    if similarity >= TITLE_SIMILARITY_LINK:
         return LinkDecision(
             LinkOutcome.LINK,
             event.event_id,
@@ -190,11 +197,15 @@ def _attribute_support(proposal: ExtractedEvent, other: ExtractedEvent | None) -
     return ""
 
 
-def _similarity(left: str, right: str) -> float:
+def title_similarity(left: str, right: str) -> float:
     """Bounded lexical overlap — Jaccard over meaningful words.
 
     Deliberately simple and inspectable. It is a tiebreaker between candidates that
     already share company, type and window, not a semantic model.
+
+    Public because presentation grouping reuses the same calibrated relation rather than
+    inventing a second one (D43). Two implementations of "these describe one occurrence"
+    would eventually disagree, and the one nobody tested would win.
     """
     a, b = _significant(left), _significant(right)
     if not a or not b:

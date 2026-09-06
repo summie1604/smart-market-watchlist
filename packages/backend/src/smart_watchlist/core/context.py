@@ -13,7 +13,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-__all__ = ["BROAD_INDEX", "CompanyContext", "CoverageTier", "context_for", "curated_symbols"]
+__all__ = [
+    "BROAD_INDEX",
+    "CompanyContext",
+    "CoverageTier",
+    "context_for",
+    "curated_symbols",
+    "index_label",
+]
 
 
 class CoverageTier(Enum):
@@ -112,3 +119,20 @@ def context_for(symbol: str, name: str) -> CompanyContext:
 def curated_symbols() -> tuple[str, ...]:
     """The securities the market pipeline observes each run."""
     return tuple(_CURATED)
+
+
+_INDEX_LABELS: dict[str, str] = {
+    "^NSEI": "NIFTY 50",
+    "^CNXIT": "NIFTY IT",
+    "^NSEBANK": "NIFTY Bank",
+    "^CNXMETAL": "NIFTY Metal",
+    "^CNXFMCG": "NIFTY FMCG",
+    "^CNXAUTO": "NIFTY Auto",
+}
+"""What each index is called to a reader. Curated for the same reason the aliases are:
+a label we generated from a ticker is a label we cannot defend."""
+
+
+def index_label(symbol: str) -> str:
+    """A readable name for an index, or the ticker when we have no curated name."""
+    return _INDEX_LABELS.get(symbol, symbol)

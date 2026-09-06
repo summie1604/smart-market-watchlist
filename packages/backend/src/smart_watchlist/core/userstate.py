@@ -57,6 +57,14 @@ class Membership:
     added_at: datetime
     """Also the observation boundary: we did not watch this company for this user before
     they added it, and the first review must not pretend otherwise."""
+    reason: str = ""
+    """Why this person follows this company, in their own words. Kept for their reference
+    and never parsed into behaviour (D27)."""
+    watch_for: str = ""
+    """What they said they want to watch for. Also free text, also never parsed."""
+    tags: tuple[str, ...] = ()
+    """Curated focus tags. The only interest that does anything, and all it does is filter
+    and annotate — it never changes an attention level, a confidence or the order."""
 
 
 @dataclass(frozen=True)

@@ -24,13 +24,14 @@ from .normalize import (
     UNUSUAL_MOVEMENT,
 )
 from .scoring import SCORING_VERSION, attention_for, weight_of
+from .standing import SourceStanding, standing_of_publisher
 
 if TYPE_CHECKING:
     from .corroboration import Corroboration
     from .extraction import Extraction
     from .linking import LinkDecision
     from .market import MarketObservation
-    from .models import Coverage, Event
+    from .models import Coverage, Event, Evidence
 
 __all__ = ["assess", "coverage_status_note"]
 
@@ -95,7 +96,7 @@ def assess(
         )
 
     reasons.extend(_market_reasons(event, observation, coverage))
-    reasons.extend(_news_reasons(corroboration, extraction, link, observation))
+    reasons.extend(_news_reasons(corroboration, extraction, link, observation, event.evidence))
 
     missing = {r.source for r in coverage.missing}
     if "market" in missing and observation is None:
@@ -146,6 +147,7 @@ def _news_reasons(
     extraction: Extraction | None,
     link: LinkDecision | None,
     observation: MarketObservation | None,
+    evidence: tuple[Evidence, ...] = (),
 ) -> list[ReasonCode]:
     """What reported evidence contributes, and what it fails to.
 
@@ -203,6 +205,34 @@ def _news_reasons(
                 "NEWS_COINCIDES_WITH_MOVE",
                 f"The shares moved unusually ({observation.return_pct:+.1f}%) over the same "
                 "period. Reported together as context, not as cause.",
+            )
+        )
+
+    # The counterpart of the code above, and only sayable because we *looked*. Where the
+    # market was not observed, NO_MARKET_OBSERVATION already records the gap and nothing
+    # is inferred from the silence.
+    elif observation is not None and not observation.is_mechanical:
+        reasons.append(
+            _reason(
+                "NO_MARKET_REACTION",
+                f"The shares did not move unusually ({observation.return_pct:+.1f}%) over "
+                "the same period. An observation about the market, not a judgement about "
+                "the report.",
+            )
+        )
+
+    # A story carried only by publishers we hold no record of is weaker evidence, and this
+    # says so about the *evidence* — never about the company. A second independent
+    # publisher outweighs it, which is the corroboration model doing its job (D13).
+    reported = [e for e in evidence if e.source == "news"]
+    if reported and all(
+        standing_of_publisher(e.publisher, e.tier) is SourceStanding.UNRECOGNISED for e in reported
+    ):
+        reasons.append(
+            _reason(
+                "UNRECOGNISED_PUBLISHER_ONLY",
+                "Carried only by publishers we hold no record of. Not a judgement about "
+                "them — we simply cannot vouch for the reporting.",
             )
         )
 
