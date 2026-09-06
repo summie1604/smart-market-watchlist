@@ -44,6 +44,9 @@ EXPOSE 8000
 # Liveness only. It says the process is up, never that a source is healthy — that is a
 # domain verdict and it lives at /v1/scheduler and in each assessment's coverage.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=2).status==200 else 1)"
+  CMD python -c "import os,urllib.request,sys; p=os.environ.get('PORT','8000'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{p}/health',timeout=2).status==200 else 1)"
 
-CMD ["uv", "run", "uvicorn", "smart_watchlist.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Shell form so `$PORT` expands. Hosts differ on this — Render and Cloud Run inject a port
+# and expect the process to honour it, Fly and a local run do not set one — and a container
+# that only ever binds 8000 is not portable between them.
+CMD uv run uvicorn smart_watchlist.api.app:app --host 0.0.0.0 --port ${PORT:-8000}

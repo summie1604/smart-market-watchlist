@@ -1,0 +1,34 @@
+# Render blueprint — the judge demo.
+#
+# Judge mode is the whole application: the same API, the same engine, the same frontend.
+# Only the three source adapters read fixtures instead of yfinance, Google News and NSE,
+# so every verdict on screen is produced by the real engine at request time rather than
+# written into the page (D42).
+#
+# It needs no disk, no credential and no scheduler. The scenario is re-seeded on each boot
+# and the scheduler is disabled by the mode itself, so a free instance that sleeps loses
+# nothing — which is exactly why this, and not live mode, is what belongs on a free tier.
+
+services:
+  - type: web
+    name: smart-market-watchlist
+    runtime: docker
+    plan: free
+    region: singapore          # Closest Render region to the exchanges being watched.
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: SMART_WATCHLIST_MODE
+        value: judge
+      # Anonymous callers resolve to one shared server-owned account, so a judge reaches
+      # the product without signing up. Correct for a demo, wrong for real users.
+      - key: DEMO_MODE
+        value: "on"
+      # Redundant with the mode, which disables it anyway. Stated so the intent is
+      # readable here rather than only in the lifespan handler.
+      - key: INGEST_SCHEDULER
+        value: "off"
+      - key: WEB_DIST
+        value: /app/web
