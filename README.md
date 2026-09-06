@@ -57,14 +57,14 @@ api/               thin shell, /v1, Pydantic → OpenAPI → generated TypeScrip
 packages/web       Astro + React islands        packages/mobile   Expo proof
 ```
 
-`core/` imports nothing from `api/`. Forty architectural decisions are recorded in
+`core/` imports nothing from `api/`. Forty-five architectural decisions are recorded in
 [`DESIGN.md`](DESIGN.md); the product thesis is in [`VISION.md`](VISION.md); where the
 build actually is, including what is unbuilt, is in [`docs/status.md`](docs/status.md).
 
 ## Running it
 
 ```bash
-make install && make test     # 388 backend + 48 frontend/mobile
+make install && make test     # 427 backend + 61 frontend/mobile/shared
 make run                      # API on :8000, web on :4321
 ```
 

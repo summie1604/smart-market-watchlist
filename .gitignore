@@ -27,7 +27,23 @@ packages/web/dist/
 # macOS
 .DS_Store
 
-# Credentials — never committed
-GEMINI.ENV
+# Credentials — never committed.
+#
+# Patterns are listed in both cases on purpose. macOS git sets core.ignorecase=true, so an
+# uppercase-only pattern appears to match a lowercase file locally and stops matching the
+# moment the repository is cloned on a case-sensitive filesystem — which is where CI and
+# most collaborators are. Verify with:
+#
+#     git -c core.ignorecase=false status --porcelain | grep -i gemini
+#
+*.env
 *.ENV
 .env.*
+.ENV.*
+GEMINI.env
+GEMINI.ENV
+gemini.env
+
+# ...but the template that documents them is meant to be read. Without this negation the
+# patterns above swallow it and a fresh clone gets no setup reference at all.
+!.env.example
