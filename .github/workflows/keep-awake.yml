@@ -1,0 +1,39 @@
+# Keep the demo instance awake.
+#
+# Render's free tier sleeps a service after ~15 minutes idle and takes roughly fifty
+# seconds to wake. A judge may open the link at any hour, unannounced, so there is nobody
+# to warm it first — and fifty seconds of blank tab is most of the time they will spend
+# looking at it.
+#
+# A request every fourteen minutes stays just inside the idle window. That means the
+# service is awake around 730 hours a month against the free tier's 750, so this is the
+# only free service this account can afford to keep running. Delete this workflow if
+# another one is added.
+#
+# GitHub disables scheduled workflows on repositories with no activity for 60 days.
+
+name: Keep the demo awake
+
+on:
+  schedule:
+    - cron: "*/14 * * * *"
+  workflow_dispatch:
+
+# Nothing is read from or written to the repository.
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wake the demo
+        run: |
+          # --max-time 120 rather than the default: a cold start is the case this exists
+          # for, and giving up at ten seconds would never actually wake it.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 \
+            https://smart-market-watchlist-tlry.onrender.com/health)
+          echo "health -> HTTP $code"
+          # A failure here is not worth an email every fourteen minutes: the instance may
+          # legitimately be redeploying. The log records it and the next run tries again.
+          test "$code" = "200" || echo "::warning::demo did not answer with 200"
