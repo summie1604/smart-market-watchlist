@@ -14,9 +14,11 @@ services:
     name: smart-market-watchlist
     runtime: docker
     plan: free
-    region: singapore          # Closest Render region to the exchanges being watched.
+    # Oregon, not Singapore: the free plan is Oregon-only, and asking for a region it does
+    # not offer fails the deploy before the build starts. Latency to India is worse and
+    # does not matter — every verdict here was computed ahead of the request.
+    region: oregon
     dockerfilePath: ./Dockerfile
-    dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
     envVars:
