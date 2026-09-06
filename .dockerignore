@@ -9,7 +9,16 @@
 *.db
 *.db-wal
 *.db-shm
+# Credentials must never enter the build context: it is uploaded whole to the remote
+# builder. Docker matches these with Go's filepath.Match, which is CASE-SENSITIVE on every
+# platform — unlike macOS git — so an uppercase-only pattern silently matches nothing.
 .env
 .env.*
+.ENV
+.ENV.*
+*.env
 *.ENV
+GEMINI.env
+GEMINI.ENV
+gemini.env
 .git
