@@ -56,7 +56,23 @@ export interface Interests {
   tags?: string[];
 }
 
-export const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "http://localhost:8000";
+/**
+ * Where the API lives.
+ *
+ * The deployed shape serves this frontend from the API process itself (D41), so the API
+ * is same-origin and a relative base is the correct one — a baked-in `http://localhost:8000`
+ * makes every visitor's browser call *their own* machine, which fails for everyone but the
+ * developer. Only local development runs the two apart, Astro on 4321 and uvicorn on 8000,
+ * so that single case is the one that needs an absolute base.
+ *
+ * `PUBLIC_API_BASE` overrides both, for a deployment that genuinely splits them.
+ */
+function defaultApiBase(): string {
+  if (typeof window === "undefined") return "";
+  return window.location.port === "4321" ? "http://localhost:8000" : "";
+}
+
+export const API_BASE = import.meta.env.PUBLIC_API_BASE ?? defaultApiBase();
 
 export function attentionLabel(attention: Attention): string {
   switch (attention) {
