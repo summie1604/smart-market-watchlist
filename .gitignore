@@ -48,6 +48,9 @@ gemini.env
 # patterns above swallow it and a fresh clone gets no setup reference at all.
 !.env.example
 
+# Screenshots are published: the README uses them.
+!screenshots/
+
 # Local tooling and working notes — not part of what is needed to run the product.
 # Everything here still exists on disk; it is simply not published.
 .claude/

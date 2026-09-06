@@ -2,18 +2,25 @@
 
 **An attention system for Indian equities — not another price dashboard.**
 
-## The problem
+### ▶ [Open the live demo](https://smart-market-watchlist-tlry.onrender.com)
+
+*No sign-up. It runs on a free instance that sleeps when idle, so the first load can take
+around fifty seconds.*
+
+---
 
 Markets generate infinite information. The scarce resource is human attention. Every tool
 in this space answers *"what happened?"* — and then hands you a feed, which is the same
 problem in a nicer font.
 
-## The question
+This one answers a harder question:
 
-> **What changed while I was away, and does it deserve me?**
+> ## What changed while I was away, and does it deserve me?
 
 Nine companies. Roughly 400 articles a cycle. On a normal day, two things deserve you.
 The product's whole job is finding which two, and being able to show its working.
+
+![The review page: two developments named, a watch point reached, and one company the system could not evaluate](screenshots/01-needs-attention.png)
 
 ## Why it is different
 
@@ -26,6 +33,25 @@ The product's whole job is finding which two, and being able to show its working
 | **Grounded assistant** | Answers only from stored records. No model in the answer path, so there is nothing that could invent a price or a cause. |
 | **Watch points** | Your own price level or percentage move, settled on stored closes, announced once. |
 | **Correlation, never causation** | News beside a move is reported as *"context, not cause"*. |
+
+## It shows its working
+
+Every verdict opens into the ledger that produced it — signed reason codes, the score they
+sum to, and the publishers behind them. This is not a summary of the reasoning; it *is* the
+reasoning, rendered.
+
+![The reasoning ledger: signed reason codes summing to a score, with named sources](screenshots/02-why-you-are-seeing-this.png)
+
+Price is context, so it lives one level in — on the company page, rebased against the
+benchmark, with developments marked on the session they were recorded in. The caption says
+what a mark means, and refuses to say more.
+
+![Price rebased against NIFTY 50, with four developments marked on one session](screenshots/05-price-chart-markers.png)
+
+The watchlist is the other half of the product: not what changed, but the current state of
+everything you follow.
+
+![The watchlist: company, verdict, latest development, then price](screenshots/03-watchlist.png)
 
 ## AI's actual role
 
@@ -144,7 +170,7 @@ during seeding.
 ## Testing
 
 ```
-388 backend (pytest)      48 frontend + mobile (bun)
+427 backend (pytest)      61 frontend + shared + mobile (bun)
 lint + typecheck clean across backend, shared, web, mobile
 ```
 
@@ -160,7 +186,8 @@ Stated rather than discovered:
 - **No predictions, no investment advice, no invented causation.**
 - **The attention engine is not yet quantitatively evaluated.** Passing tests prove the
   implementation matches its specification, not that the ranking is useful. A labelled
-  evaluation set is scaffolded in `packages/backend/evaluation/` and deliberately empty.
+  evaluation set is scaffolded in `packages/backend/src/smart_watchlist/evaluation/`
+  and ships deliberately empty.
 - **Nine curated companies**, not fifty. Depth over breadth; everything else is `LIMITED`
   and says so.
 - **End-of-day data only.** No intraday. A level crossed and recovered inside one session
