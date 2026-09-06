@@ -8,6 +8,9 @@
 FROM oven/bun:1 AS web
 WORKDIR /src
 COPY package.json bun.lock ./
+# Both packages/web and packages/shared extend this, so the build cannot resolve their
+# tsconfig without it. Its absence failed the image at the Astro step every time.
+COPY tsconfig.base.json ./
 COPY packages/web/package.json packages/web/
 COPY packages/shared/package.json packages/shared/
 COPY packages/mobile/package.json packages/mobile/
